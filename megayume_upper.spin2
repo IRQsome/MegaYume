@@ -17,7 +17,7 @@ CON ' Header
 CON
 
 '{
-VIDEO_MODE = video.MODE_VGA2X
+VIDEO_MODE = video.MODE_VGA3X
 VIDEO_SUBMODE = video.SUBMODE_NTSC
 
 VGA_BASEPIN = 48
@@ -61,7 +61,7 @@ usb : "1CogKbM_rja3b"
 VAR
 
 
-PUB main()
+PUB main() | tmp
 
 
 ' setup video driver
@@ -86,16 +86,29 @@ coginit(HUBEXEC_NEW,long[$1C],0)
 usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0)
 
 repeat
-  'long[0] := (video.getScanLine(@display) + 1) / 2 - 8
-  word[$40].[0] := usb.keystate(usb.KEY_UP)
-  word[$40].[1] := usb.keystate(usb.KEY_DOWN)
-  word[$40].[2] := usb.keystate(usb.KEY_LEFT)
-  word[$40].[3] := usb.keystate(usb.KEY_RIGHT)
-  word[$40].[4] := usb.keystate(usb.KEY_C)
-  word[$40].[5] := usb.keystate(usb.KEY_V)
-  word[$40].[6] := usb.keystate(usb.KEY_X)
-  word[$40].[7] := usb.keystate(usb.KEY_ENTER)
+  tmp.[ 0] := usb.keystate(usb.KEY_UP)          ' Up
+  tmp.[ 1] := usb.keystate(usb.KEY_DOWN)        ' Down
+  tmp.[ 2] := usb.keystate(usb.KEY_LEFT)        ' Left
+  tmp.[ 3] := usb.keystate(usb.KEY_RIGHT)       ' Right
+  tmp.[ 4] := usb.keystate(usb.KEY_C)           ' B
+  tmp.[ 5] := usb.keystate(usb.KEY_V)           ' C
+  tmp.[ 6] := usb.keystate(usb.KEY_X)           ' A
+  tmp.[ 7] := usb.keystate(usb.KEY_ENTER)       ' START
+  tmp.[ 8] := usb.keystate(usb.KEY_F)           ' Z
+  tmp.[ 9] := usb.keystate(usb.KEY_D)           ' Y
+  tmp.[10] := usb.keystate(usb.KEY_S)           ' X
+  tmp.[11] := usb.keystate(usb.KEY_A)           ' MODE
 
+  tmp &= $FFF
+  ' Cancel opposing directions
+  if tmp.[0..1] == %11
+    tmp.[0..1] := %00
+  if tmp.[2..3] == %11
+    tmp.[2..3] := %00
+
+  word[$40] := tmp
+
+  ' TODO: Figure something out for player 2
   'word[$42] := 0
   word[$42].[0] := usb.keystate(usb.KEY_PageUp)
   word[$42].[1] := usb.keystate(usb.KEY_PageDwn)

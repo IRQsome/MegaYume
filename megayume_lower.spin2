@@ -27,6 +27,16 @@ REGION_DOMESTIC_60HZ = %00 '' Japan
 REGION_OVERSEAS_50HZ = %11 '' Europe, Australia
 REGION_DOMESTIC_50HZ = %01 '' Narnia, Gensokyo, Oz, Bielefeld
 
+
+'' Controller types
+'' 6-button is usually what you want,
+'' but some games only work with 3-button
+PLAYER1_PAD = PAD_6BUTTON
+PLAYER2_PAD = PAD_NONE
+
+
+#0,PAD_NONE,PAD_3BUTTON,PAD_6BUTTON
+
 CON ' Common constants
 
 _CLKFREQ = 327_600_000
@@ -87,8 +97,14 @@ io_pl1_padw   word 0 ' < $40 (populated by upper code)
 io_pl2_padw   word 0 ' < $42 (populated by upper code)
 io_pl1_dir    byte 0
 io_pl1_out    byte 0
+io_pl1_state  byte 0
+io_pl1_type   byte PLAYER1_PAD
 io_pl2_dir    byte 0
 io_pl2_out    byte 0
+io_pl2_state  byte 0
+io_pl2_type   byte PLAYER2_PAD
+
+io_6btn_timeout long 0 ' Timeout for 6 button state machine
 
 
 zbus_request  byte $00 ' \/ These two can be read as a word
@@ -228,11 +244,11 @@ mk_nextop_nohook
               'tjnz mk_debug_tripwire,#.no_trace
               'tjz mk_debug_ctr,#.no_trace
               'sub mk_debug_ctr,#1
-       '      cmp mk_debug_tripwire,mk_virtualpc wz
-       ' if_nz jmp #.no_trace
+              'cmp mk_debug_tripwire,mk_virtualpc wz
+        'if_nz jmp #.no_trace
               'debug("tripwired' ",uhex_byte_array(#@zbus_status,#1),uhex_long(mk_virtualpc))
               'call #mk_check_core_integrity
-              'debug("got: ",uhex_word_(mk_opword)," before ",uhex_long_(mk_virtualpc),uhex_long(mk_d0),uhex_long(mk_a0))
+              'debug("got: ",uhex_word_(mk_opword)," before ",uhex_long_(mk_virtualpc),uhex_long(mk_d2,mk_a0,mk_a1))
               'debug("registers: ",ubin_word(mk_sr),13,uhex_reg_array(#mk_d0,#8),13,uhex_reg_array(#mk_a0,#8))
 
               'debug("got op: ",uhex_word(mk_opword)," before ",uhex_long(mk_virtualpc),uhex_long(mk_a3))
@@ -867,7 +883,7 @@ mk_nco_slow   long $4000_0000
 
 mk_cogvar_start
 
-mk_debug_tripwire long $31D178
+mk_debug_tripwire long $00173E
 mk_debug_ctr  long 0
 
 mk_virtualpc  res 1 ' PC in virtual space
@@ -2640,7 +2656,11 @@ mk_init
               wrword pa,#vdp_cyc2hcnt_w
               debug("H counter timing constant: ",udec_word_array(#vdp_cyc2hcnt_w,#1))
 
-
+              ' Compute timing constant for 6-button state machine reset
+              rdlong pa,#_clkf
+              qdiv pa,##666 ' 1.5 ms - unfortunate reciporal
+              getqx pa
+              wrlong pa,#io_6btn_timeout
 
 
               ' allocate all the locks like some sort of maniac
@@ -2781,24 +2801,73 @@ iog_write8_internal
               orgh .iog_regwr_base + 0*4*4 ' ???? ($A10001)
               ret wcz
               orgh .iog_regwr_base + 1*4*4 ' player 1 controller out ($A10003)
-              'testb mk_memvalue,#6 wc
+              rdword mk_memtmp0,#io_pl1_dir
               wrbyte mk_memvalue,#io_pl1_out
-              ret wcz
+              jmp #.pl1_setout
               orgh .iog_regwr_base + 2*4*4 ' player 2 controller out ($A10005)
+              rdword mk_memtmp0,#io_pl2_dir
               wrbyte mk_memvalue,#io_pl2_out
-              ret wcz
+              jmp #.pl2_setout
               orgh .iog_regwr_base + 3*4*4 ' modem out ($A10007)
               ret wcz
               orgh .iog_regwr_base + 4*4*4 ' player 1 direction ($A10009)
+              rdword mk_memtmp0,#io_pl1_dir
               wrbyte mk_memvalue,#io_pl1_dir
-              ret wcz
+              jmp #.pl1_setout
               orgh .iog_regwr_base + 5*4*4 ' player 2 direction ($A1000B)
+              rdword mk_memtmp0,#io_pl2_dir
               wrbyte mk_memvalue,#io_pl2_dir
-              ret wcz
+              jmp #.pl2_setout
               orgh .iog_regwr_base + 6*4*4 ' modem direction ($A1000D)
               ret wcz
               orgh .iog_regwr_base + 7*4*4 ' ???? don't care  ($A1000F)
               ret wcz
+
+.pl1_setout
+              rdword mk_memtmp1,#io_pl1_dir
+
+              pollct1 wc ' if timer elapsed, reset controller state machine
+        if_c  wrbyte #0,#io_pl1_state
+
+              testb mk_memtmp0,#6+8 wc ' old out bit
+              testbn mk_memtmp0,#6 orc ' if dir is low, pullup
+              testb mk_memtmp1,#6+8 wz ' new out bit
+              testbn mk_memtmp1,#6 orz ' if dir is low, pullup
+
+    if_not_10 ret wcz ' Return if not falling edge
+              ' increment state
+              rdbyte mk_memtmp2,#io_pl1_state
+              incmod mk_memtmp2,#3
+              wrbyte mk_memtmp2,#io_pl1_state
+              ' reset timeout
+              rdlong mk_memtmp0,#io_6btn_timeout
+              getct mk_memtmp2
+              addct1 mk_memtmp2,mk_memtmp0
+              ret wcz
+
+.pl2_setout
+              rdword mk_memtmp1,#io_pl2_dir
+
+              pollct2 wc ' if timer elapsed, reset controller state machine
+        if_c  wrbyte #0,#io_pl2_state
+
+              testb mk_memtmp0,#6+8 wc ' old out bit
+              testbn mk_memtmp0,#6 orc ' if dir is low, pullup
+              testb mk_memtmp1,#6+8 wz ' new out bit
+              testbn mk_memtmp1,#6 orz ' if dir is low, pullup
+
+    if_not_10 ret wcz ' Return if not falling edge
+              ' increment state
+              rdbyte mk_memtmp2,#io_pl2_state
+              incmod mk_memtmp2,#3
+              wrbyte mk_memtmp2,#io_pl2_state
+              ' reset timeout
+              rdlong mk_memtmp0,#io_6btn_timeout
+              getct mk_memtmp2
+              addct2 mk_memtmp2,mk_memtmp0
+              ret wcz
+
+
 
 zbus_write16
               shr mk_memvalue,#8 ' Only MSB gets through
@@ -2911,13 +2980,15 @@ iog_read8
               mov mk_memvalue,#%0000_0000 + (USE_REGION<<6) ' version 0 (no TMSS)
               ret wcz
               orgh .iog_regrd_base + 1*4*4 ' player 1 controller data ($A10003)
-              rdword mk_memtmp0,#io_pl1_dir ' out state in top byte
-              rdword mk_memvalue,#io_pl1_padw
-              jmp #.padread
+              'rdword mk_memtmp0,#io_pl1_dir ' out state in top byte
+              'rdword mk_memvalue,#io_pl1_padw
+              'jmp #.padread
+              jmp #io_pl1_padread
               orgh .iog_regrd_base + 2*4*4 ' player 2 controller data ($A10005)
-              rdword mk_memtmp0,#io_pl2_dir ' out state in top byte
-              rdword mk_memvalue,#io_pl2_padw
-              jmp #.padread
+              'rdword mk_memtmp0,#io_pl2_dir ' out state in top byte
+              'rdword mk_memvalue,#io_pl2_padw
+              'jmp #.padread
+              jmp #io_pl2_padread
               orgh .iog_regrd_base + 3*4*4 ' modem data ($A10007)
               mov mk_memvalue,#0
               ret wcz
@@ -2934,6 +3005,80 @@ iog_read8
               mov mk_memvalue,#0
               ret wcz
 
+
+io_pl1_padread
+              pollct1 wc ' if timer elapsed, reset controller state machine
+        if_c  wrbyte #0,#io_pl1_state
+
+              rdword mk_memtmp0,#io_pl1_dir ' out state in top byte
+              mov mk_memvalue,#$7F
+              rdbyte mk_memtmp3,#io_pl1_type wz
+        if_z  jmp #.done ' No controller: all pins pulled up
+              rdbyte mk_memtmp2,#io_pl1_state
+              cmp mk_memtmp3,#PAD_6BUTTON wz
+        if_z  cmp mk_memtmp2,#3 wz ' Z set -> read 6btn data
+              testb mk_memtmp0,#6+8 wc ' TH out bit
+              testbn mk_memtmp0,#6 orc ' if TH dir bit not set, pull up
+
+              rdword mk_memvalue,#io_pl1_padw
+              mov mk_memtmp1,mk_memvalue
+              'debug("padrd ",uhex_word_(mk_memtmp0,mk_memvalue),uhex_byte_(mk_memtmp2,mk_memtmp3))
+
+        if_0x or mk_memvalue,#%1100
+        if_01 or mk_memvalue,#%1111
+        if_0x shr mk_memtmp1,#2
+        if_11 shr mk_memtmp1,#8
+        if_0x setq #%11_0000
+        if_11 setq #%00_1111
+        if_not_10 muxq mk_memvalue,mk_memtmp1
+
+              and mk_memvalue,#$7F
+              xor mk_memvalue,#$7F
+.done
+              ' Force output pins to fixed state
+              getbyte pa,mk_memtmp0,#1
+              and mk_memtmp0,#127
+              setq mk_memtmp0
+              muxq mk_memvalue,pa
+              'debug("padv ",uhex_byte_(mk_memvalue))
+              ret wcz
+
+
+io_pl2_padread
+              pollct2 wc ' if timer elapsed, reset controller state machine
+        if_c  wrbyte #0,#io_pl2_state
+
+              rdword mk_memtmp0,#io_pl2_dir ' out state in top byte
+              mov mk_memvalue,#$7F
+              rdbyte mk_memtmp3,#io_pl2_type wz
+        if_z  jmp #.done ' No controller: all pins pulled up
+              rdbyte mk_memtmp2,#io_pl2_state
+              cmp mk_memtmp3,#PAD_6BUTTON wz
+        if_z  cmp mk_memtmp2,#3 wz ' Z set -> read 6btn data
+              testb mk_memtmp0,#6+8 wc ' TH out bit
+              testbn mk_memtmp0,#6 orc ' if TH dir bit not set, pull up
+
+              rdword mk_memvalue,#io_pl2_padw
+              mov mk_memtmp1,mk_memvalue
+
+        if_0x or mk_memvalue,#%1100
+        if_01 or mk_memvalue,#%1111
+        if_0x shr mk_memtmp1,#2
+        if_11 shr mk_memtmp1,#8
+        if_0x setq #%11_0000
+        if_11 setq #%00_1111
+        if_not_10 muxq mk_memvalue,mk_memtmp1
+
+              and mk_memvalue,#$7F
+              xor mk_memvalue,#$7F
+.done
+              ' Force output pins to fixed state
+              getbyte pa,mk_memtmp0,#1
+              and mk_memtmp0,#127
+              setq mk_memtmp0
+              muxq mk_memvalue,pa
+              ret wcz
+{
 .padread
               testb mk_memtmp0,#6 wc ' dir bit set
               testbn mk_memtmp0,#6+8 andc ' out bit low
@@ -2945,7 +3090,7 @@ iog_read8
               and mk_memvalue,#$7F
               xor mk_memvalue,#$7F
               ret wcz
-
+}
 
 iog_z80_poll
               testb mk_eacache,#0 wc ' odd address??
