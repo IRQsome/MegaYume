@@ -1,0 +1,72 @@
+{{
+--------------------------------------------------------------------------------------------------
+
+ Propeller 2 No Memory Driver
+ ============================
+ 
+ This empty driver can be assigned when no memory of a given type is fitted in a system.
+
+ Revision history:
+ ----------------
+   0.9b   22 DEC 2021  rogloh      -general BETA release-
+ 
+--------------------------------------------------------------------------------------------------
+}}
+
+CON
+    'standard memory request masks
+    R_READBYTE  = %1000 << 28     ' read (or RMW) a byte from device address
+    R_READWORD  = %1001 << 28     ' read (or RMW) a word from device address
+    R_READLONG  = %1010 << 28     ' read (or RMW) a long from device address
+    R_READBURST = %1011 << 28     ' read a burst of data from device into HUB RAM
+    R_WRITEBYTE = %1100 << 28     ' write byte(s) into device
+    R_WRITEWORD = %1101 << 28     ' write word(s) into device
+    R_WRITELONG = %1110 << 28     ' write long(s) into device
+    R_WRITEBURST= %1111 << 28     ' write a burst of HUB RAM data into device
+
+    'control request masks
+    R_GETLATENCY= %10000000 << 24 ' read driver's latency for a bank
+    R_GETREG    = %10010000 << 24 ' read device register
+    R_GETPARAMS = %10100000 << 24 ' read a bank parameter long
+    R_DUMPSTATE = %10110000 << 24 ' dump COG+LUT RAM areas into HUB RAM for debug
+    R_SETLATENCY= %11000000 << 24 ' write driver's latency for a bank
+    R_SETREG    = %11010000 << 24 ' write device register
+    R_SETPARAMS = %11100000 << 24 ' write a bank parameter long
+    R_CONFIG    = %11110000 << 24 ' reconfigure COG QoS settings & poller code
+
+    'errors returned by driver
+    ERR_INVALID_BANK = -1  ' invalid bank is accessed
+    ERR_UNSUPPORTED  = -2  ' operation not supported
+    ERR_INVALID_LIST = -3  ' invalid request in list
+    ERR_ALIGNMENT    = -4  ' address is not aligned for type of request
+    ERR_BUSY         = -5  ' flash is busy
+
+    'flag bits per COG
+    PRIORITY_BIT     = 15  ' COG is strict priority polled if set
+    NOTIFY_BIT       = 11  ' COG is also notified with COGATN if set
+    LOCKED_BIT       = 10  ' COG's transfers are bus locked if set
+    LIST_BIT         =  9  ' COG is executing a list when set
+
+    'flag type bits per bank
+    PROT_BIT         = 11  ' bit is set if HyperFlash bank is exclusively protected by a COG
+    FLASH_BIT        = 10  ' bit is set for HyperFlash, cleared for RAM
+
+    'driver configuration flag bits
+    FASTREAD_BIT     = 31  ' bit set when reads are done at sysclk/1 transfer rate instead of sysclk/2
+    FASTWRITE_BIT    = 30  ' (reserved for future sysclk/1 writes)
+    UNREGCLK_BIT     = 29  ' bit set when unregistered clock pins are enabled (experimental only)
+    EXPANSION_BIT    = 28  ' bit set to expand driver to run HUB exec code
+
+    'misc
+    MAX_FLASH_SIZE   = 512 ' maximum number of bytes written to flash
+    OVERHEAD_CYCLES  = 100 ' approximate P2 overhead cycles while CS is low, with some safety margin
+
+    'reset timing
+    RESET_HIGH_US    = 150 ' idle time before starting reset pulse in microseconds
+    RESET_LOW_US     =   3 ' active low reset pulse width in microseconds
+    MIN_CS_DELAY_US  = 150 ' minimum delay in microseconds after reset ends before first memory access
+
+'--------------------------------------------------------------------------------------------------
+PUB getDriverAddr() : r
+    return 0
+

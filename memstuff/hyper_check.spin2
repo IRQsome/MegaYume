@@ -1,0 +1,53 @@
+CON
+_CLKFREQ = 300_000_000
+_STACK = 128
+_FREE = ((512-32)*1024)/4 + 1
+
+OBJ
+ram:"memory"
+
+PUB main() | i,romsize,chksum,val,byte buffer[256]
+
+ram.initHyperDriver(0,0,-1,0,0,-1)
+
+ram.read(@buffer,$100,256)
+
+debug("System type:      ",lstr_(@buffer[$00],16))
+debug("Copyright:        ",lstr_(@buffer[$10],16))
+debug("Title (domestic): ",lstr_(@buffer[$20],48))
+debug("Title (overseas): ",lstr_(@buffer[$50],48))
+debug("Serial:           ",lstr_(@buffer[$80],14))
+chksum := word[@buffer[$8E]]
+romsize := long[@buffer[$A4]]
+org
+   movbyts chksum,#%%2301
+   movbyts romsize,#%%0123
+end
+debug("ROM Size: ",uhex_long_(romsize))
+debug("Header checksum: ",uhex_word_(chksum))
+
+
+testaddr($40000)
+testaddr($80000)
+testaddr($C0000)
+testaddr($09D52)
+testaddr($1009D52)
+
+
+chksum := 0
+repeat i from $200 to romsize-3 step 2
+  ram.read(@buffer,i,2)
+  val := buffer.word[0]
+  org
+   movbyts val,#%%2301
+   add chksum,val
+  end
+chksum &= $FFFF
+debug("Computed checksum (doesn't quite work?): ",uhex_word_(chksum))
+
+
+PRI testaddr(a) : val
+
+
+ram.read(@val,a,4)
+debug("At ",uhex_long(a),": ",uhex_long_(val))

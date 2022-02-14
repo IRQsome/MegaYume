@@ -1,0 +1,118 @@
+CON
+'{
+_CLKFREQ = 300_000_000
+PSRAM_CLK = 56
+PSRAM_SELECT = 57
+PSRAM_BASE = 40
+'}
+
+{
+_CLKFREQ = 10_000_000
+PSRAM_CLK = 15
+PSRAM_SELECT = 14
+PSRAM_BASE = 24
+'}
+PSRAM_WAIT  = 10
+PSRAM_DELAY = PSRAM_WAIT*2+3
+
+DAT
+        org
+        asmclk
+        setq2 #511
+        rdlong 0,##@lutstuff
+
+        fltl #PSRAM_CLK
+        wrpin ##P_TRANSITION|P_OE, #PSRAM_CLK
+        wxpin #1, #PSRAM_CLK
+        drvl #PSRAM_CLK
+
+        drvh #PSRAM_SELECT
+
+        setxfrq nco_slow
+
+        waitx #200
+
+        debug("init ok")
+
+        wrlong #"A",##@romio_area
+
+        mov iter,#5
+.lp
+        mov pa,##$100 >> 2
+        mov read_longs,#4
+        call #readburst
+        debug(lstr(#@romio_area,#16),uhex_byte_array(#@romio_area,#16))
+        djnz iter,#.lp
+
+        jmp #$
+
+readburst
+              mov tmp1,#(8+PSRAM_WAIT)*2
+              shl read_longs,#2
+              add tmp1,read_longs
+              setbyte pa,#$EB,#3
+              splitb  pa
+              rev     pa
+              movbyts pa, #%%0123
+              mergeb  pa
+              drvl  #PSRAM_SELECT
+              drvl  bus_pinfield
+              xinit addr_cmd,pa
+              wypin tmp1,#PSRAM_CLK
+              setq nco_fast
+              xcont #PSRAM_DELAY,#0
+              wrfast  bit31,read_dest
+              shr read_longs,#1
+              setword read_cmd,read_longs,#0
+              waitxmt
+              fltl bus_pinfield
+              setq nco_slow
+              xcont read_cmd,#0
+              waitxfi
+        _ret_ drvh #PSRAM_SELECT
+
+
+bit31         long  negx
+bus_pinfield  long PSRAM_BASE addpins 15
+addr_cmd      long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_LUT + 8
+read_cmd      long (PSRAM_BASE<<17)|X_WRITE_ON| X_16P_2DAC8_WFWORD
+
+nco_fast      long $8000_0000
+nco_slow      long $4000_0000
+
+read_longs    long 4
+read_dest     long @romio_area
+
+tmp1          res 1
+iter          res 1
+
+
+DAT
+        org $200
+lutstuff
+              long $0000
+              long $1111
+              long $2222
+              long $3333
+              long $4444
+              long $5555
+              long $6666
+              long $7777
+              long $8888
+              long $9999
+              long $AAAA
+              long $BBBB
+              long $CCCC
+              long $DDDD
+              long $EEEE
+              long $FFFF
+
+
+
+DAT
+              orgh
+              alignl
+
+romio_area    byte 0[256]
+
+

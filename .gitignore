@@ -1,0 +1,10 @@
+*.binary
+*.lst
+*.p2asm
+*.bin
+log*.txt
+*.log
+zeuggl/**
+alt/**
+*.zip
+*.exe

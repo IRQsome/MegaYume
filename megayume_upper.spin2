@@ -1,0 +1,119 @@
+CON ' Header
+
+''    _______ _______ _______ _______                 _______ _______
+''   (       |  ____ (  ____ (  ___  )\     /|\     /(       |  ____ \
+''   | () () | (    \/ (    \/ (   ) ( \   / ) )   ( | () () | (    \/
+''   | || || | (__   | |     | (___) |\ (_) /| |   | | || || | (__
+''   | |(_)| |  __)  | | ____|  ___  | \   / | |   | | |(_)| |  __)
+''   | |   | | (     | | \_  ) (   ) |  ) (  | |   | | |   | | (
+''   | )   ( | (____/\ (___) | )   ( |  | |  | (___) | )   ( | (____/\
+''   |/     \(_______(_______)/     \|  \_/  (_______)/     \(_______/
+''
+''                    -= SEGA MEGA DRIVE EMULATOR =-
+''
+'' Note: this sucks. not as much.
+'' Perhaps more important note: use the included build.sh.
+
+CON
+
+'{
+VIDEO_MODE = video.MODE_VGA2X
+VIDEO_SUBMODE = video.SUBMODE_NTSC
+
+VGA_BASEPIN = 48
+VGA_VSYNC   = VGA_BASEPIN + 4
+
+'}
+{
+VIDEO_MODE = video.MODE_SVID_AND_COMP
+VIDEO_SUBMODE = 0
+
+VGA_BASEPIN = 40
+VGA_VSYNC   = 0
+'}
+{
+VIDEO_MODE = video.MODE_HDMI
+VIDEO_SUBMODE = 0
+
+VGA_BASEPIN = 32
+VGA_VSYNC   = 0
+'}
+
+AUDIO_LEFT  = 40+6
+AUDIO_RIGHT = AUDIO_LEFT + 1
+
+'' USB Keyboard/mouse.
+  USB0_BASEPIN = 16             ' USB port0/port1 pin block
+  NEXT_BASEPIN = 4              ' Add to BASEPIN for next USB port pin
+' EVENT_PIN    = BASEPIN        ' BASEPIN is also the EVENT repository
+' ACTIVITY_LED = BASEPIN        ' and the port activity LED
+  ENABLE_PIN   = 1              ' USB object enables port voltage protection
+  DM_PIN       = 2              ' Add to BASEPIN
+' DP_PIN       = BASEPIN + 3    ' DP is always DM_PIN + 1
+' P2 Eval board user LEDs (active low) lit if an USB port has a fatal error:
+  'USB0_ERROR_LED    = 56
+
+OBJ
+
+video : "MegaVGA"
+usb : "1CogKbM_rja3b"
+
+VAR
+
+
+PUB main()
+
+
+' setup video driver
+video.start($F8,$64,long[$20],VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC,VIDEO_SUBMODE) '
+
+' setup OPN2/PSG
+byte[$F0] := AUDIO_LEFT
+byte[$F1] := AUDIO_RIGHT
+coginit(COGEXEC_NEW,long[$30],0)
+
+
+'setup VDP
+coginit(COGEXEC_NEW,long[$24],0)
+coginit(COGEXEC_NEW,long[$28],0)
+
+' setup Z80
+coginit(HUBEXEC_NEW,long[$2C],0)
+
+' setup 68000
+coginit(HUBEXEC_NEW,long[$1C],0)
+
+usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0)
+
+repeat
+  'long[0] := (video.getScanLine(@display) + 1) / 2 - 8
+  word[$40].[0] := usb.keystate(usb.KEY_UP)
+  word[$40].[1] := usb.keystate(usb.KEY_DOWN)
+  word[$40].[2] := usb.keystate(usb.KEY_LEFT)
+  word[$40].[3] := usb.keystate(usb.KEY_RIGHT)
+  word[$40].[4] := usb.keystate(usb.KEY_C)
+  word[$40].[5] := usb.keystate(usb.KEY_V)
+  word[$40].[6] := usb.keystate(usb.KEY_X)
+  word[$40].[7] := usb.keystate(usb.KEY_ENTER)
+
+  'word[$42] := 0
+  word[$42].[0] := usb.keystate(usb.KEY_PageUp)
+  word[$42].[1] := usb.keystate(usb.KEY_PageDwn)
+
+DAT
+      {
+vga_timing         'VGA resolution 640x480 60Hz with 25.2MHz pixel clock
+            long   0'$01C732FB
+            long   327_600_000
+
+                   '_HSyncPolarity___FrontPorch__SyncWidth___BackPorch__Columns
+                   '     1 bit         7 bits      8 bits      8 bits    8 bits
+            long   (video.SYNC_NEG<<31) | ( 16<<24) | ( 96<<16) | ( 48<<8 ) | (640/8)
+
+                   '_VSyncPolarity___FrontPorch__SyncWidth___BackPorch__Visible
+                   '     1 bit         8 bits      3 bits      9 bits   11 bits
+            long   (video.SYNC_NEG<<31) | ( 10<<23) | (  2<<20) | ( 33<<11) | 480
+            long   13 << 8 ' $0ccccccc+1
+            long   0
+            long   0   ' reserved for CFRQ parameter
+            }
