@@ -2980,14 +2980,8 @@ iog_read8
               mov mk_memvalue,#%0000_0000 + (USE_REGION<<6) ' version 0 (no TMSS)
               ret wcz
               orgh .iog_regrd_base + 1*4*4 ' player 1 controller data ($A10003)
-              'rdword mk_memtmp0,#io_pl1_dir ' out state in top byte
-              'rdword mk_memvalue,#io_pl1_padw
-              'jmp #.padread
               jmp #io_pl1_padread
               orgh .iog_regrd_base + 2*4*4 ' player 2 controller data ($A10005)
-              'rdword mk_memtmp0,#io_pl2_dir ' out state in top byte
-              'rdword mk_memvalue,#io_pl2_padw
-              'jmp #.padread
               jmp #io_pl2_padread
               orgh .iog_regrd_base + 3*4*4 ' modem data ($A10007)
               mov mk_memvalue,#0
@@ -3078,19 +3072,7 @@ io_pl2_padread
               setq mk_memtmp0
               muxq mk_memvalue,pa
               ret wcz
-{
-.padread
-              testb mk_memtmp0,#6 wc ' dir bit set
-              testbn mk_memtmp0,#6+8 andc ' out bit low
-        if_c  testb mk_memvalue,#6 wz
-        if_c  bitz mk_memvalue,#4
-        if_c  testb mk_memvalue,#7 wz
-        if_c  bitz mk_memvalue,#5
-        if_c  or mk_memvalue,#%0100_1100
-              and mk_memvalue,#$7F
-              xor mk_memvalue,#$7F
-              ret wcz
-}
+
 
 iog_z80_poll
               testb mk_eacache,#0 wc ' odd address??
