@@ -925,9 +925,10 @@ mk_lutbase
 
 mk_readrom_ea32
               mov mk_romio_length,#2
-              skipf #%10
+              skipf #%100
 mk_readrom_ea
               mov pa,mk_effaddr
+              zerox pa,#22 ' Limit to 8 MB range
               mov mk_romio_length,#1
               rczr pa wcz
               mov mk_romio_target,mk_romio_area_ptr
