@@ -39,7 +39,7 @@ PLAYER2_PAD = PAD_NONE
 
 CON ' Common constants
 
-_CLKFREQ = 327_600_000
+_CLKFREQ = 327_600_000 ' Ignore this unless you're debugging - clock is set by video driver
 
 
 ' For quad PSRAM
