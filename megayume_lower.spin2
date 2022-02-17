@@ -602,7 +602,7 @@ mk_setup_operand16_move
               call #mk_compute_ea
 mk_setup_ea16
               testb mk_effaddr,#0 wc
-        if_c  jmp #mk_address_error_debug
+        if_c  jmp #mk_address_error
               mov pb,mk_effaddr
               zerox pb,#23
               cmp pb,mk_ram_begin wc
@@ -812,13 +812,14 @@ mk_romque_refill
               mov mk_romque_left,#MK_ROMQUE_SIZE
               mov ptra,mk_romque_area_ptr
               mov pa,mk_virtualpc
+              zerox pa,#22 ' Limit to 8 MB range
               ' Handle not long-aligned access
               rczr pa wcz
         if_c  sub  mk_romio_target,#2
         if_c  add  mk_romio_length,#1
         if_nz push #mk_getop_rom
         if_nz jmp #mk_readrom
-              jmp #mk_address_error ' TODO: maybe make AE function code read program in this case?
+              jmp #mk_address_error_debug ' TODO: maybe make AE function code read program in this case?
 
 
 mk_condition_truth_table
@@ -1547,9 +1548,9 @@ mk_dobranch
         'if_e  jmp #.sussy_wussy
               cmp mk_virtualpc,#$1FF wcz
         if_be jmp #.sussy_wussy
-              cmps mk_branchdisplace,##$FFFFF wc
+              cmps mk_branchdisplace,##$3FFFFF wc
         if_ae jmp #.sussy_wussy
-              cmps mk_branchdisplace,##-$FFFFF wc
+              cmps mk_branchdisplace,##-$3FFFFF wc
         if_ae jmp #.not_a_sussy_baka
 .sussy_wussy
               debug("Sussy branch from ",uhex_long_(mk_optmp0)," to ",uhex_long_(mk_virtualpc),uhex_long(mk_a4,mk_a6,mk_d3),uhex_long_array(#@main_ram+$1510,#1))
@@ -1581,7 +1582,7 @@ mk_dobranch
 
 .not_rom
               cmp pb,mk_ram_begin wc
-        if_b  jmp #mk_address_error ' not the appropriate trap, but good enough
+        if_b  jmp #mk_address_error_debug ' not the appropriate trap, but good enough
               mov mk_getopf,#mk_getop_ram
               jmp #mk_nextop
 
