@@ -3837,7 +3837,7 @@ vdpc_linelp
 
 
               ' Load colors
-              setq #63
+              setq #(64*3)-1
               rdlong vdpc_colors,vdpc_cramptr
 
               mov ptra,vdpc_outbuffer
@@ -3920,8 +3920,8 @@ vdpc_linelp
 
               mov vdpc_pixelOut,vdpc_bgcolor
 
-              mov vdpc_shadhl,#1 ' Base state shadowed
-              mov vdpc_shadhl,#0 ' Base state normal
+              mov vdpc_shadhl,#00 ' Base state shadowed
+              mov vdpc_shadhl,#64 ' Base state normal
 
               test vdpc_4pixelsB,vdpc_pnibs+0 wz ' Low priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#0
@@ -3932,37 +3932,42 @@ vdpc_linelp
               getbyte vdpc_tmp1,vdpc_4pixelsS,#0 ' Low priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 3E, +1 for 3F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 3E, +1 for 3F
               test vdpc_tmp3,vdpc_pnibs+0 wz
-  if_c_and_z  mov vdpc_shadhl,#0
+  if_c_and_z  mov vdpc_shadhl,#64
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
 
 
               test vdpc_4pixelsB,vdpc_pnibs+0 wz ' High priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#0
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
               test vdpc_4pixelsA,vdpc_pnibs+0 wz ' High priority A
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsA,#0
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
 
               getbyte vdpc_tmp1,vdpc_4pixelsS,#0 ' High priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 7E, +1 for 7F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 7E, +1 for 7F
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
-  if_c_and_nz mov vdpc_shadhl,#0
+  if_c_and_nz mov vdpc_shadhl,#64
 
-
+              {
               alts vdpc_pixelOut,#vdpc_colors
               mov vdpc_pixelOut,0-0
               cmps vdpc_shadhl,#0 wcz
         if_nz shr vdpc_pixelOut,#1
         if_nz muxc vdpc_pixelOut,vdpc_halfpix
               wflong vdpc_pixelOut
+              }
+              fges vdpc_shadhl,#0 ' No need to limit top
+              add vdpc_pixelOut,vdpc_shadhl
+              altd vdpc_pixelOut,#vdpc_colors
+              wflong 0-0
 
 
 
@@ -3972,8 +3977,8 @@ vdpc_linelp
 
               mov vdpc_pixelOut,vdpc_bgcolor
 
-              mov vdpc_shadhl,#1 ' Base state shadowed
-              mov vdpc_shadhl,#0 ' Base state normal
+              mov vdpc_shadhl,#00 ' Base state shadowed
+              mov vdpc_shadhl,#64 ' Base state normal
 
               test vdpc_4pixelsB,vdpc_pnibs+1 wz ' Low priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#1
@@ -3984,38 +3989,42 @@ vdpc_linelp
               getbyte vdpc_tmp1,vdpc_4pixelsS,#1 ' Low priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 3E, +1 for 3F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 3E, +1 for 3F
               test vdpc_tmp3,vdpc_pnibs+1 wz
-  if_c_and_z  mov vdpc_shadhl,#0
+  if_c_and_z  mov vdpc_shadhl,#64
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
 
 
               test vdpc_4pixelsB,vdpc_pnibs+1 wz ' High priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#1
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
               test vdpc_4pixelsA,vdpc_pnibs+1 wz ' High priority A
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsA,#1
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
 
               getbyte vdpc_tmp1,vdpc_4pixelsS,#1 ' High priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 7E, +1 for 7F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 7E, +1 for 7F
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
-  if_c_and_nz mov vdpc_shadhl,#0
+  if_c_and_nz mov vdpc_shadhl,#64
 
-
+              {
               alts vdpc_pixelOut,#vdpc_colors
               mov vdpc_pixelOut,0-0
               cmps vdpc_shadhl,#0 wcz
         if_nz shr vdpc_pixelOut,#1
         if_nz muxc vdpc_pixelOut,vdpc_halfpix
               wflong vdpc_pixelOut
-
+              }
+              fges vdpc_shadhl,#0 ' No need to limit top
+              add vdpc_pixelOut,vdpc_shadhl
+              altd vdpc_pixelOut,#vdpc_colors
+              wflong 0-0
 
 
 
@@ -4025,8 +4034,8 @@ vdpc_linelp
 
               mov vdpc_pixelOut,vdpc_bgcolor
 
-              mov vdpc_shadhl,#1 ' Base state shadowed
-              mov vdpc_shadhl,#0 ' Base state normal
+              mov vdpc_shadhl,#00 ' Base state shadowed
+              mov vdpc_shadhl,#64 ' Base state normal
 
               test vdpc_4pixelsB,vdpc_pnibs+2 wz ' Low priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#2
@@ -4037,38 +4046,42 @@ vdpc_linelp
               getbyte vdpc_tmp1,vdpc_4pixelsS,#2 ' Low priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 3E, +1 for 3F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 3E, +1 for 3F
               test vdpc_tmp3,vdpc_pnibs+2 wz
-  if_c_and_z  mov vdpc_shadhl,#0
+  if_c_and_z  mov vdpc_shadhl,#64
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
 
 
               test vdpc_4pixelsB,vdpc_pnibs+2 wz ' High priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#2
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
               test vdpc_4pixelsA,vdpc_pnibs+2 wz ' High priority A
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsA,#2
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
 
               getbyte vdpc_tmp1,vdpc_4pixelsS,#2 ' High priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 7E, +1 for 7F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 7E, +1 for 7F
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
-  if_c_and_nz mov vdpc_shadhl,#0
+  if_c_and_nz mov vdpc_shadhl,#64
 
-
+              {
               alts vdpc_pixelOut,#vdpc_colors
               mov vdpc_pixelOut,0-0
               cmps vdpc_shadhl,#0 wcz
         if_nz shr vdpc_pixelOut,#1
         if_nz muxc vdpc_pixelOut,vdpc_halfpix
               wflong vdpc_pixelOut
-
+              }
+              fges vdpc_shadhl,#0 ' No need to limit top
+              add vdpc_pixelOut,vdpc_shadhl
+              altd vdpc_pixelOut,#vdpc_colors
+              wflong 0-0
 
 
 
@@ -4079,8 +4092,8 @@ vdpc_linelp
 
               mov vdpc_pixelOut,vdpc_bgcolor
 
-              mov vdpc_shadhl,#1 ' Base state shadowed
-              mov vdpc_shadhl,#0 ' Base state normal
+              mov vdpc_shadhl,#00 ' Base state shadowed
+              mov vdpc_shadhl,#64 ' Base state normal
 
               test vdpc_4pixelsB,vdpc_pnibs+3 wz ' Low priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#3
@@ -4091,38 +4104,42 @@ vdpc_linelp
               getbyte vdpc_tmp1,vdpc_4pixelsS,#3 ' Low priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 3E, +1 for 3F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 3E, +1 for 3F
               test vdpc_tmp3,vdpc_pnibs+3 wz
-  if_c_and_z  mov vdpc_shadhl,#0
+  if_c_and_z  mov vdpc_shadhl,#64
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
 
 
               test vdpc_4pixelsB,vdpc_pnibs+3 wz ' High priority B
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsB,#3
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
               test vdpc_4pixelsA,vdpc_pnibs+3 wz ' High priority A
         if_nz getbyte vdpc_pixelOut,vdpc_4pixelsA,#3
-        if_nz mov vdpc_shadhl,#0
+        if_nz mov vdpc_shadhl,#64
 
 
               getbyte vdpc_tmp1,vdpc_4pixelsS,#3 ' High priority S
               cmp vdpc_tmp1,#$3E wcz
               modc %1111 wc
-        if_nc sumz vdpc_shadhl,#1 ' -1 for 7E, +1 for 7F
+        if_nc sumnz vdpc_shadhl,#64 ' -1 for 7E, +1 for 7F
               test vdpc_tmp1,#15 wz
   if_c_and_nz mov vdpc_pixelOut,vdpc_tmp1
-  if_c_and_nz mov vdpc_shadhl,#0
+  if_c_and_nz mov vdpc_shadhl,#64
 
-
+              {
               alts vdpc_pixelOut,#vdpc_colors
               mov vdpc_pixelOut,0-0
               cmps vdpc_shadhl,#0 wcz
         if_nz shr vdpc_pixelOut,#1
         if_nz muxc vdpc_pixelOut,vdpc_halfpix
               wflong vdpc_pixelOut
-
+              }
+              fges vdpc_shadhl,#0 ' No need to limit top
+              add vdpc_pixelOut,vdpc_shadhl
+              altd vdpc_pixelOut,#vdpc_colors
+              wflong 0-0
 
 
               'add vdpc_tmp1,#1
@@ -4205,7 +4222,7 @@ vdpc_iter               res 1
 
 vdpc_curline            res 1
 
-vdpc_colors             res 64
+vdpc_colors             res 64*3
 
 vdpc_bgcolor            res 1
 vdpc_flags              res 1
@@ -4686,6 +4703,14 @@ vdpio_write16
               and mk_memvalue,##$EEE
               shl mk_memvalue,#1
               add mk_memvalue,##@cram2cram32_table
+              rdlong pa,mk_memvalue
+              wrlong pa,mk_memtmp0
+              add mk_memvalue,#8*4
+              add mk_memtmp0,#64*4
+              rdlong pa,mk_memvalue
+              wrlong pa,mk_memtmp0
+              add mk_memvalue,#(128*4)-(8*4)
+              add mk_memtmp0,#64*4
               rdlong pa,mk_memvalue
               wrlong pa,mk_memtmp0
               ret wcz
@@ -7832,74 +7857,7 @@ vdp_cram ' also VSRAM
               'file "Sonic2_CRAM.ram"
 
 vdp_cram32
-              'long 0[64]
-              long 0 * $11_11_11_00
-              long 1 * $11_11_11_00
-              long $FF00FF00'2 * $11_11_11_00
-              long 3 * $11_11_11_00
-              long 4 * $11_11_11_00
-              long 5 * $11_11_11_00
-              long 6 * $11_11_11_00
-              long 7 * $11_11_11_00
-              long 8 * $11_11_11_00
-              long 9 * $11_11_11_00
-              long 10 * $11_11_11_00
-              long 11 * $11_11_11_00
-              long 12 * $11_11_11_00
-              long 13 * $11_11_11_00
-              long 14 * $11_11_11_00
-              long 15 * $11_11_11_00
-
-              long 0 * $11_00_00_00
-              long 1 * $11_00_00_00
-              long 2 * $11_00_00_00
-              long 3 * $11_00_00_00
-              long 4 * $11_00_00_00
-              long 5 * $11_00_00_00
-              long 6 * $11_00_00_00
-              long 7 * $11_00_00_00
-              long 8 * $11_00_00_00
-              long 9 * $11_00_00_00
-              long 10 * $11_00_00_00
-              long 11 * $11_00_00_00
-              long 12 * $11_00_00_00
-              long 13 * $11_00_00_00
-              long 14 * $11_00_00_00
-              long 15 * $11_00_00_00
-
-              long 0 * $00_11_00_00
-              long 1 * $00_11_00_00
-              long 2 * $00_11_00_00
-              long 3 * $00_11_00_00
-              long 4 * $00_11_00_00
-              long 5 * $00_11_00_00
-              long 6 * $00_11_00_00
-              long 7 * $00_11_00_00
-              long 8 * $00_11_00_00
-              long 9 * $00_11_00_00
-              long 10 * $00_11_00_00
-              long 11 * $00_11_00_00
-              long 12 * $00_11_00_00
-              long 13 * $00_11_00_00
-              long 14 * $00_11_00_00
-              long 15 * $00_11_00_00
-
-              long 0 * $00_00_11_00
-              long 1 * $00_00_11_00
-              long 2 * $00_00_11_00
-              long 3 * $00_00_11_00
-              long 4 * $00_00_11_00
-              long 5 * $00_00_11_00
-              long 6 * $00_00_11_00
-              long 7 * $00_00_11_00
-              long 8 * $00_00_11_00
-              long 9 * $00_00_11_00
-              long 10 * $00_00_11_00
-              long 11 * $00_00_11_00
-              long 12 * $00_00_11_00
-              long 13 * $00_00_11_00
-              long 14 * $00_00_11_00
-              long 15 * $00_00_11_00
+              long 0[64*3]
 
 renderbuffer_loc
               byte 0[RENDERBUFFER_SIZE*2]
