@@ -40,7 +40,7 @@ DAT
         debug(uhex_long(#@romio_area))
 
 
-        mov iter,#5
+        mov iter,#16
 .lp
         wrlong #"A",##@romio_area
         mov pa,##$100 >> 2
@@ -54,7 +54,7 @@ DAT
 
 readburst
               mov tmp1,#(6+HYPER_WAIT)
-              shl read_longs,#3
+              shl read_longs,#2
               add tmp1,read_longs
               fltl #HYPER_CLK
               rczr pa wcz
@@ -72,7 +72,6 @@ readburst
               setq nco_fast
               xcont #HYPER_DELAY,#0
               wrfast bit31,read_dest
-              shr read_longs,#1
               setword read_cmd,read_longs,#0
               waitxmt
               fltl bus_pinfield
