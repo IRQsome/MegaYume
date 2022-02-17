@@ -299,7 +299,7 @@ mk_nibble_0   ' Immediate ops (decode headache!)
 
               call mk_readf
               cmp mk_optmp2,#%1100 wz
-        if_z  jmp #mk_sub_common ' CMPI (doesn't write) (use sub_common because operand order)
+        if_z  jmp #mk_cmp_swapped ' CMPI (doesn't write)
               push mk_writef ' setup write return
               cmp mk_optmp2,#%0110 wz
         if_z  jmp #mk_add_common ' ADDI
@@ -436,7 +436,13 @@ mk_nibble_5_not_addsub
 mk_cmp
               callpb mk_opword,#mk_setup_operand_auto
               call mk_readf
-              call #mk_get_second_reg
+              push #mk_cmp_common
+              jmp #mk_get_second_reg
+
+mk_cmp_swapped
+              xor mk_memvalue,mk_optmp1
+              xor mk_optmp1,mk_memvalue
+              xor mk_memvalue,mk_optmp1
 mk_cmp_common
               'debug("in mk_cmp_common ",uhex_long(mk_d0),uhex_long(mk_memvalue),uhex_long(mk_optmp1),udec(mk_shiftit))
               shl mk_memvalue,mk_shiftit
@@ -449,7 +455,7 @@ mk_cmp_common
               bitc mk_sr,#MK_OVER_BIT
               ' do actual sub
               sub mk_optmp1,mk_memvalue wcz
-              muxc mk_sr,#MK_CARRY_MASK|MK_EXT_MASK
+              bitc mk_sr,#MK_CARRY_BIT
               bitz mk_sr,#MK_ZERO_BIT
               testb mk_optmp0,#31 wc
         _ret_ bitc mk_sr,#MK_NEG_BIT
@@ -506,7 +512,7 @@ mk_add_common
               testb mk_optmp0,#31 wc
               bitc mk_sr,#MK_NEG_BIT
 
-        _ret_  sar mk_memvalue,mk_shiftit
+        _ret_  shr mk_memvalue,mk_shiftit
 
 mk_sub_withdir
               ' if dir bit clear, swap operands
@@ -531,7 +537,7 @@ mk_sub_common
               testb mk_optmp0,#31 wc
               bitc mk_sr,#MK_NEG_BIT
 
-        _ret_  sar mk_memvalue,mk_shiftit
+        _ret_  shr mk_memvalue,mk_shiftit
 
 mk_addsuba
               setq mk_dreg_mask
@@ -774,7 +780,7 @@ mk_thelogicop and mk_memvalue,mk_optmp1 wz
               testb mk_memvalue,#31 wz
               bitz mk_sr,#MK_NEG_BIT
               andn mk_sr,#MK_CARRY_MASK|MK_OVER_MASK
-        _ret_ sar mk_memvalue,mk_shiftit
+        _ret_ shr mk_memvalue,mk_shiftit
 
 
 mk_illegal
@@ -1434,7 +1440,7 @@ mk_nibble_8   ' DIVx/OR/SBCD
               testb mk_opword,#8 andz
         if_nz setr mk_thelogicop,#%0101010_01 ' P2 OR WZ opcode
         if_nz jmp #mk_multilogic ' OR
-              test mk_opword,#%11_000_000 wz
+              'test mk_opword,#%11_000_000 wz
               jmp #mk_hub_sbcd
 
 mk_nibble_B   ' CMP (M/A)
