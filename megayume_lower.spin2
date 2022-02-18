@@ -228,6 +228,7 @@ mk_nextop
               'debug("registers: ",ubin_word(mk_sr),13,uhex_reg_array(#mk_d0,#8),13,uhex_reg_array(#mk_a0,#8))
               'debug("last 16 RAM bytes: ",uhex_byte_array(#main_ram + $FFF0,#16))
               'tjnz mk_debug_ctr,#mk_nextop_nohook
+              jatn mk_resetptr
 mk_ihook1     nop
 mk_ihook2     nop
 mk_nextop_nohook
@@ -261,6 +262,7 @@ mk_nextop_nohook
 
 mk_irq4ptr    long @mk_hub_irq4
 mk_irq6ptr    long @mk_hub_irq6
+mk_resetptr   long @mk_hub_hotreset
 
 mk_write_second_reg_or_ea '' for ops that have two directional modes
               testb mk_opword,#8 wc
@@ -1874,6 +1876,7 @@ mk_hub_stop
                mov mk_memvalue,mk_optmp1
                call #mk_wr_sr
 .waitloop
+              JATN mk_resetptr
               getnib pb,mk_sr,#2
               cmp pb,#6 wc
         if_b  JSE2 mk_irq6ptr
@@ -2729,6 +2732,8 @@ mk_init
               movbyts pb,#%%0123
               wrlong pb,ptra++
 .vswaplp
+
+mk_hub_hotreset
               mov mk_sr,##MK_SUPER_MASK + (7<<8)
               'call #mk_check_core_integrity
               ' initialize PC and SP
@@ -2737,6 +2742,7 @@ mk_init
               rdlong mk_a7,##mk_vectorcache+$00
               debug("inital pc and sp ",uhex_long(mk_branchdisplace),uhex_long(mk_a7))
               mov ptra,#0
+              neg mk_romque_left,#1
               jmp #mk_dobranch
 
               {

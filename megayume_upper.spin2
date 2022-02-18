@@ -60,6 +60,7 @@ usb : "1CogKbM_rja3b"
 
 VAR
 
+long did_reset,cpu_cog
 
 PUB main() | tmp
 
@@ -81,7 +82,7 @@ coginit(COGEXEC_NEW,long[$28],0)
 coginit(HUBEXEC_NEW,long[$2C],0)
 
 ' setup 68000
-coginit(HUBEXEC_NEW,long[$1C],0)
+cpu_cog := coginit(HUBEXEC_NEW,long[$1C],0)
 
 usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0)
 
@@ -112,6 +113,13 @@ repeat
   'word[$42] := 0
   word[$42].[0] := usb.keystate(usb.KEY_PageUp)
   word[$42].[1] := usb.keystate(usb.KEY_PageDwn)
+  word[$42].[7] := usb.keystate(usb.KEY_End)
+
+  tmp:=usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_R)
+  if tmp&&!did_reset
+    cogatn(decod cpu_cog)
+  did_reset:=tmp
+
 
 DAT
       {
