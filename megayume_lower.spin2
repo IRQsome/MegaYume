@@ -5425,7 +5425,7 @@ zk_cycles     long 0
 zk_pc         long $0100
 
 zk_bankmask   long $FF8000
-zk_romstop    long $4000000
+zk_romstop    long $800000
 zk_bankreg    long 0
 
 zk_romio_area_ptr long @z80_romio_area
