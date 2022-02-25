@@ -71,7 +71,7 @@ video.start($F8,$64,long[$20],VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC,VIDEO_SUBMODE) '
 ' setup OPN2/PSG
 byte[$F0] := AUDIO_LEFT
 byte[$F1] := AUDIO_RIGHT
-coginit(COGEXEC_NEW,long[$30],0)
+coginit(HUBEXEC_NEW,long[$30],0)
 
 
 'setup VDP

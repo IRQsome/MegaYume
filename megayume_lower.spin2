@@ -84,12 +84,12 @@ DAT ' startup code & zero page
               orgh $14
 _clkf         long 0
 _clkm         long 0
-_mk_init_ptr  long @mk_init ' < $1C
+_mk_init_ptr            long @mk_init ' < $1C
 _vdp_outbuffer_ptr      long @outbuffer_loc ' < $20
 _vdpr_load_ptr          long @vdpr_entry ' < $24
 _vdpc_load_ptr          long @vdpc_entry ' < $28
-_zk_init_ptr  long @zk_init ' < $2C
-_opn_load_ptr           long @opn_cogbase ' < $30
+_zk_init_ptr            long @zk_init ' < $2C
+_opn_init_ptr           long @opn_init ' < $30
 
               orgh $40
               ' control bit format is %MXYZ_SACB_RLDU
@@ -6264,13 +6264,16 @@ EG_RATE_61 = round(8.0*EG_FACTOR)
 EG_RATE_62 = round(8.0*EG_FACTOR)
 EG_RATE_63 = round(8.0*EG_FACTOR)
 
-DAT ' OPN2Cog COG/LUT resident code
-              org 0
+DAT ' OPN2Cog init code
+              orgh
 '===========================================================
 '                Assembly OPN2 emulator
 '===========================================================
-opn_cogbase
+opn_init
               'debug    (udec(leftp,rightp),uhex_long(sampleRate))
+              loc      ptrb,#@opn_cogbase
+              setq     #502-1
+              rdlong   0,ptrb
               add      ptrb,## @opn_lutbase - @opn_cogbase
               setq2    #511
               rdlong   0,ptrb
@@ -6307,11 +6310,17 @@ opn_cogbase
               drvh     opn_leftp
               drvh     opn_rightp
 
+              jmp #\opn_mainLoop
 
 
+DAT ' OPN2Cog COG/LUT resident code
+
+
+              org 0
 '===========================================================
 '                Main Loop
 '===========================================================
+opn_cogbase
 opn_mainLoop
 
               ' reset register pointer
@@ -6645,6 +6654,7 @@ eg_max                  long $3FF << EG_EXTRABITS
 ssg_eg_threshold        long $200 << EG_EXTRABITS
 psg_oscSubValue         long OSC_FREQ_CALIBRATION
 psg_noiseSubValue       long OSC_FREQ_CALIBRATION >> 1
+opn_distortconst        long OPN_DISTORTION*OPN_VOLUME_MUL
 
 OPN_Address             long @opn_regbase
 
@@ -7109,8 +7119,7 @@ byte ALG_ADDOUT
 do_output
               ' YM2612 output distortion (gap between -1 and 0)
               abs       ch_out  wc
-              add       ch_out,#OPN_DISTORTION
-              fle       ch_out,#256+OPN_DISTORTION
+              fle       ch_out,#256
               mul       ch_out,#OPN_VOLUME_MUL ' OPN2 volume!
 
               neg       opn_arg1,opn_filter_left
@@ -7118,8 +7127,10 @@ do_output
 
               testb     ch_freq_algo_pan,#31 wz ' left pan bit
         if_z  sumc      opn_arg1,ch_out
+              sumc      opn_arg1,opn_distortconst
               testb     ch_freq_algo_pan,#30 wz ' right pan bit
         if_z  sumc      opn_arg2,ch_out
+              sumc      opn_arg2,opn_distortconst
 
               ' apply low-pass filter and mix PSG
               sar       opn_arg1,opn_lpf_sar
