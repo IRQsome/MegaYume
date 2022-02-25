@@ -3220,10 +3220,6 @@ vdpr_doRender
               ' Render Plane B (Background)
               mov vdpr_tileiter,vdpr_screenwidth
 
-              mov vdpr_vscroll_getter,vdpr_vscroll_getter_planeB
-
-              getword vdpr_current_vscroll,vdpr_vsram_buffer+0,#1 ' Set vscroll for partial column
-                                                                  ' TODO: implement column scrolling glitchyness
 
               ' Tile base address
               getword vdpr_tileptr,vdpr_current_hscroll,#1
@@ -3238,6 +3234,18 @@ vdpr_doRender
               and vdpr_tmp1,#7 wz
               sub ptra,vdpr_tmp1
         if_nz add vdpr_tileiter,#1
+
+              mov vdpr_vscroll_getter,vdpr_vscroll_getter_planeB
+              ' Set vscroll for partial column
+              testbn vdpr_tileptr,#1 andz
+              testbn vdpr_columnscroll,#0 orz
+              testb  vdpr_flags,#VDPFLAG_H40 wc
+        if_x1 getword vdpr_current_vscroll,vdpr_vsram_buffer+0,#1
+        if_x1 add vdpr_vscroll_getter,vdpr_columnscroll
+        if_10 getword vdpr_current_vscroll,vdpr_vsram_buffer+19,#1
+        if_10 and     vdpr_current_vscroll,vdpr_vsram_buffer+19
+        if_00 mov     vdpr_current_vscroll,#0
+
 
               decod vdpr_hscroll_sub,vdpr_planewidth
 
@@ -3371,6 +3379,7 @@ vdpr_doSPRreload_ptr long vdpr_doSPRreload ' lol
 
 vdpr_renderPlane
               wrfast vdpr_con_bit31,ptra
+              skipf #%111 ' First tile always has buggy VSCROLL
 vdpr_renderPlane_loop
               testb vdpr_tileptr,#1 wc
 vdpr_vscroll_getter
@@ -3628,6 +3637,7 @@ vdpr_renderWindow
         if_be ret
 
               mov vdpr_vscroll_getter,vdpr_vscroll_getter_window
+              and vdpr_current_vscroll,#0
 
               ' Tile base address
               mov vdpr_tileptr,vdpr_windowbase
@@ -3661,12 +3671,7 @@ vdpr_renderPlaneA
         if_z_or_c ret
 
 
-              mov vdpr_vscroll_getter,vdpr_vscroll_getter_planeA
 
-              'add vdpr_current_hscroll,vdpr_curframe ' DEBUG HACK
-
-              getword vdpr_current_vscroll,vdpr_vsram_buffer+0,#0 ' Set vscroll for partial column
-                                                                  ' TODO: implement column scrolling glitchyness
 
               ' Tile base address
               getword vdpr_tileptr,vdpr_current_hscroll,#0
@@ -3689,6 +3694,17 @@ vdpr_renderPlaneA
               and vdpr_tmp1,#7 wz
               sub ptra,vdpr_tmp1
         if_nz add vdpr_tileiter,#1
+
+              mov vdpr_vscroll_getter,vdpr_vscroll_getter_planeA
+              ' Set vscroll for partial column
+              testbn vdpr_tileptr,#1 andz
+              testbn vdpr_columnscroll,#0 orz
+              testb  vdpr_flags,#VDPFLAG_H40 wc
+        if_x1 getword vdpr_current_vscroll,vdpr_vsram_buffer+0,#0
+        if_x1 add vdpr_vscroll_getter,vdpr_columnscroll
+        if_10 getword vdpr_current_vscroll,vdpr_vsram_buffer+19,#1
+        if_10 and     vdpr_current_vscroll,vdpr_vsram_buffer+19
+        if_00 mov     vdpr_current_vscroll,#0
 
               decod vdpr_hscroll_sub,vdpr_planewidth
 
