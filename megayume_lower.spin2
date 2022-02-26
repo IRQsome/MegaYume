@@ -6148,15 +6148,15 @@ OPN_NTSC  = 7_670_453.0, OPN_PAL = 7_600_489.0
   OPN_SAMPLE_RATE           = trunc(OPN_FREQUENCY/float(6*4)) ' Sample rate of OPN2cog
   ' (Each opearator consumes 6 cycles and thus each channel consumes 24 cycles.)
   ' OPN2cog outputs each channel sequentially, just like the real thing
-  PSG_SAMPLE_RATE           = trunc(OPN_FREQUENCY/float(6*4*6))
-  ' PSG is updated once every full sample
+  PSG_SAMPLE_RATE           = trunc(OPN_FREQUENCY/float(6*4*6/3))
+  ' PSG is updated thrice every full sample
 
 
   OPN_VOLUME_MUL = trunc((float($7F7F)*VOLUME_BALANCE)/float(256+OPN_DISTORTION))
 
   ' EG magic
   EG_CLOCKDIV = 3 ' EG clock divider on real YM2612
-  EG_CALLS_PER_SAMPLE = 2 ' EG Task call count
+  EG_CALLS_PER_SAMPLE = 12 ' EG Task call count
   EG_CALLS_PER_OP = 3.0 ' How many calls to process one OP
   EG_RATEDIV = ((EG_CALLS_PER_OP*6.0*4.0) / float(EG_CALLS_PER_SAMPLE))/float(EG_CLOCKDIV)
   EG_EXTRABITS = 26-10 ' How many extra bits in level variable. MUST BE 16!!!
@@ -6418,13 +6418,16 @@ opn_chLoop    ' Channel loop
 
               mov ch_out,#0 ' reset output accu
 
+              calld eg_return,pb wcz
+              calld eg_return,pb wcz
+
               ' Run some extra tasks.
               jmprel opn_current_ch
               jmp #opn_task_done ' No extra task for Channel 1 (already reloads globals and runs LFO)
-              jmp pb wcz     ' Do EG call in Channel 2
+              jmp #psg_run   ' Run PSG in Channel 2
               jmp #opn_task_done ' No extra task for Channel 3 (special mode takes all the cycles)
-              jmp #psg_load  ' Load PSG in Channel 4
-              jmp pb wcz     ' Do EG call in Channel 5
+              jmp #psg_run   ' Run PSG in Channel 4
+              jmp #psg_load  ' Load PSG in Channel 5
               jmp #psg_run   ' Run PSG in Channel 6
 
 opn_task_done
@@ -6731,6 +6734,18 @@ psg_oscCounter3     long 0
 psg_oscCounterN     long 0
 
 
+' PSG registers (initialized to avoid click)
+' -------------
+psg_frequency1      long 0
+psg_amplitude1      long 15
+psg_frequency2      long 0
+psg_amplitude2      long 15
+psg_frequency3      long 0
+psg_amplitude3      long 15
+psg_noiseFeedback   long 0
+psg_amplitudeN      long 15
+
+
 eg_rate_mantissa_tbl byte
 byte EG_RATE_0>>(((encod EG_RATE_0)-7)#>0)
 byte EG_RATE_1>>(((encod EG_RATE_1)-7)#>0)
@@ -7012,17 +7027,6 @@ ch3_op2_detune          res 1
 ch3_op3_detune          res 1
 op_detune               res 1
 
-' PSG registers
-' -------------
-psg_frequency1      res  1
-psg_amplitude1      res  1
-psg_frequency2      res  1
-psg_amplitude2      res  1
-psg_frequency3      res  1
-psg_amplitude3      res  1
-psg_noiseFeedback   res  1
-psg_amplitudeN      res  1
-
 
 ' PSG temporary
 ' -------------
@@ -7030,6 +7034,7 @@ psg_noiseFreq       res  1
 
 ' other gunk
 ' ----------
+eg_return           res  1
 opn_tempValue       res  1
 opn_tempValue2      res  1
 
@@ -7197,7 +7202,7 @@ opn_eg_loop
               rdlong opn_tempValue3,ptrb++
 
 
-              calld pb,#\opn_task_done
+              calld pb,eg_return
 
               'mov eg_ar_dr_sr_rr,##$3F_10_1A_31
 
@@ -7240,7 +7245,7 @@ opn_eg_loop
          if_c bitl pending_keyon,eg_slot
 
 
-              calld pb,#\opn_task_done
+              calld pb,eg_return
 
 
               ' if key on/off
@@ -7316,7 +7321,7 @@ opn_eg_loop
          if_z shl opn_arg2,#2 ' ..and quadruples the rate
    if_nz_or_c add eg_oplevel,opn_arg2
 .adsrjoin
-              calld pb,#\opn_task_done
+              calld pb,eg_return
 
               fle eg_oplevel,eg_max
 
