@@ -16,6 +16,9 @@ OptionParser.new do |opts|
     opts.on("--hyper") do |v|
         loader = "hyper_loadit"
     end
+    opts.on("--4bit") do |v|
+        loader = "psram4_loadit"
+    end
 end.parse!
 
 `flexspin -2 #{__dir__}/memstuff/#{loader}.spin2`

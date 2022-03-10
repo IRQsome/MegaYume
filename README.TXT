@@ -12,7 +12,7 @@
 
 MegaYume is a SEGA Mega Drive / Genesis emulator for
 Parallax P2 micro-controllers with appropriate memory expansions
-(Currently supported: HyperRAM, 4xQPI PSRAM).
+(Currently supported: HyperRAM, 4xQPI PSRAM, 1x QPI PSRAM).
 (ROMs up to 128k can also be run without a memory expansion)
 
 MegaYume is alpha-quality software and is currently a bit clunky to use.
@@ -44,7 +44,8 @@ See the issues section of this GitHub repository for known issues.
 
 - Search for "PSRAM as ROM", "HyperRAM as ROM" and "HUB RAM as ROM" in 
   megayume_lower.spin2 and make sure only the blocks corresponding to
-  your memory type are enabled.
+  your memory type are enabled. Note that some blocks are common between
+  the 4 bit and 16 bit PSRAM setups
 
 - If using "HUB RAM as ROM", go to the bottom of megayume_lower.spin2 and
   add your ROM as a FILE-include after "fake_rom". Make sure only one FILE
@@ -53,11 +54,15 @@ See the issues section of this GitHub repository for known issues.
 
 - If using HyperRAM or PSRAM on nonstandard pins,
   (ie. not HyperRAM on 0..15 or PSRAM on 40..57)
-  edit memstuff/hyper_loadit.spin2 or memstuff/psram_loadit.spin2 to fit.
+  edit the appropriate loader to fit.
+  HyperRAM -> memstuff/hyper_loadit.spin2
+  PSRAM 16bit -> memstuff/psram_loadit.spin2
+  PSRAM4 16bit -> memstuff/psram4_loadit.spin2
 
 - If NOT using "HUB RAM as ROM",
   run "ruby loadit.rb --hyper -p COMx your_game_rom.bin"
   "COMx" is your P2's serial port. Omit the "--hyper" if using PSRAM.
+  Use "--4bit" instead if using 4 bit PSRAM.
 
 - Start emulation using "loadp2 -p COMx megayume_lower.binary"
 
@@ -76,5 +81,6 @@ CRAM2RGB.DAT  - CRAM to truecolor expansion table
 cram_tablegen.rb  - Can generates the above
 build.sh  - Standard build script
 build_gbrk.sh  - Build script for core debugging
+memstuff  - Various things to do with external memory
 
 
