@@ -297,8 +297,8 @@ between them. The transmitter was just described above. Below, the receiver is d
 the receiver receives not just input from another host/device, but all local output, as well.
 
 At any time, a RDPIN/RQPIN can be executed on the lower pin to read the current 16-bit status of the
-receiver, with the error flag going into C. The lower pin’s IN will be raised whenever a change
-occurs in the receiver’s status. This will necessitate A WRPIN/WXPIN/WYPIN/RDPIN/AKPIN before IN can
+receiver, with the error flag going into C. The lower pin's IN will be raised whenever a change
+occurs in the receiver's status. This will necessitate A WRPIN/WXPIN/WYPIN/RDPIN/AKPIN before IN can
 be raised again, to alert of the next change in status.
 
 NOTE that after the pin is acknowledged, it will take at least two clocks for IN to drop, before it
