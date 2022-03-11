@@ -24,7 +24,7 @@ Features include:
   - Pretty decent FM sound
   - 6 button controller support
   - Video output over VGA, HDMI, S-video or Composite
-  - USB Keyboard input (easy to hack in other devices)
+  - USB Keyboard input (somewhat easy to hack in other devices)
   - Buuuuggggssss!!
 
 See the issues section of this GitHub repository for known issues.

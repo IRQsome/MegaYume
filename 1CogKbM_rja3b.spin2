@@ -534,25 +534,30 @@ VAR
 ' Parameter block end
   byte cogNum
 
-  long mouseGunk[5]
+  'long mouseGunk[5]
   byte pressedKeys[8]
   byte modifierStates
+
+  byte emupad_map[32]
 
 '' Caller must define all I/O pins required by the USB host. This implementation
 '' uses the Parallax P2 Eval "Serial Host" add-on board, which requires a
 '' contiguous four-pin block starting at an even pin number. All host pin
 '' assignments are configured in the "usb_host_init" code block.
 '' Returns cog number, or -1 if cog not available.
-PUB start(base_pin, enable_pin, dm_pin, err_led_pin) : cog
+PUB start(base_pin, enable_pin, dm_pin, err_led_pin, gamepad_addr, opposing1, opposing2, opposing3, opposing4) : cog
 'RJA:  Adding handling of mouse data to this driver
 'RJA:  Adding explicit enable pin that can be set to -1 to not use
 'Setting pointers in assembly code before starting cog
-    pMouseX:=@mouseGunk
-    pMouseY:=@mouseGunk+4
-    pMouseMaxX:=@mouseGunk+8
-    pMouseMaxY:=@mouseGunk+12
-    pMouseButtons:=@mouseGunk+16
+    'pMouseX:=@mouseGunk
+    'pMouseY:=@mouseGunk+4
+    'pMouseMaxX:=@mouseGunk+8
+    'pMouseMaxY:=@mouseGunk+12
+    'pMouseButtons:=@mouseGunk+16
     pKeyReport:= @pressedKeys
+    pPadReport:= gamepad_addr
+    pPadMap   := @emupad_map
+    longmove(@pad_opposing,@opposing1,4)
 
 'Enable USB power, if enable_pin>0
   if (enable_pin>0)
@@ -628,6 +633,14 @@ repeat i from 2 to 7
 
 '' Poll the state of the USB event smart pin long respository.
 '' If data is available, returns the event ID, otherwise zero (NO_EVENT).
+
+PUB setEmuPadMapping(button,scancode)
+if button +<= 31
+  emupad_map[button] := scancode
+
+PUB getEmuPadMapping(button) : scancode
+if button +<= 31
+  scancode := emupad_map[button]
 
 PUB modtest(mask) : r
 
@@ -1384,11 +1397,17 @@ hreg_init_end
 
 'DAT 'RJA Adding pointers to mouse data in main cog
 'Will be set before cog is started
+{
 pMouseX         long    0
 pMouseY         long    0
 pMouseMaxX      long    0
 pMouseMaxY      long    0
 pMouseButtons   long    0
+}
+pPadReport      long    0
+pPadMap         long    0
+pad_opposing    long    0[4]
+pad_tmp         long    0
 mtemp1          long    0 'temp long for mouse math
 mtemp2          long    0 'temp long for mouse math
 pKeyReport      long    0
@@ -1912,7 +1931,7 @@ disconnected
                 shr     hr1, #3                         ' Pulse the activity LED every two seconds but break
                 waitx   hr1                             ' it down to smaller wait chunks
                 incmod  mod_cnt, #8             wc
-        if_c    drvnot  host_active_led
+        'if_c   drvnot  host_active_led
                 rqpin   urx, dm
                 and     urx, #J_IDLEF | K_RESUMEF wcz   ' Wait for rise of J or K, mutually exclusive
         if_z    jmp     #disconnected                   ' J and K still low, so keep waiting for connect
@@ -1976,7 +1995,7 @@ hidle
         if_z    jmp     #host_reset                     ' See if it works...
                 getct   hr0
                 cmp     hr0, _pulse_time_       wcz     ' Connected "heartbeat"
-        if_ae   drvnot  host_active_led
+        'if_ae  drvnot  host_active_led
         if_ae   getct   _pulse_time_
         if_ae   add     _pulse_time_, _500ms_
                 jmp     #hidle
@@ -2009,7 +2028,7 @@ hwait_resume
                 shr     hr1, #2
                 waitx   hr1                             ' Pulse the activity LED every two seconds but break
                 incmod  mod_cnt, #8             wc      ' it down to smaller wait chunks
-        if_c    drvnot  host_active_led
+        'if_c   drvnot  host_active_led
                 rdlong  htmp, cmd_data_p
                 cmp     htmp, #CMD_RESUME       wz
         if_nz   jmp     #hwait_resume
@@ -2495,7 +2514,7 @@ hget_kbd_in_report
                 cmp     hkbd_poll_cnt, hkbd_repeat wcz
         if_b    ret                                     ' No auto-repeat action
                 cmp     hkbd_poll_cnt, #KBD_REPEAT_DELAY wz
-        if_z    drvnot  host_active_led                 ' Show keypress activity on the feedback LED
+        'if_z   drvnot  host_active_led                 ' Show keypress activity on the feedback LED
                 rdbyte  hpar1, kb_last_key_p            ' Peek at the last key-down scancode
                 cmp     hpar1, #KEY_CAPSLK      wz
         if_z    mov     hpar1, #KEY_NO_KEY
@@ -2506,7 +2525,7 @@ hget_kbd_in_report
                 add     hkbd_repeat, #KBD_REPEAT_RATE   ' Set the next repeat interval
                 jmp     #repeat_key                     ' Repeat the key being held down and return to caller
 .data
-                drvnot  host_active_led                 ' Show keypress activity on the feedback LED
+                'drvnot host_active_led                 ' Show keypress activity on the feedback LED
                 cmp     hpar3, #0               wz
         if_z    ret                                     ' Ignore an empty DATAx packet
                 mov     ptra, kb_next_datax_p
@@ -2556,12 +2575,14 @@ hkbd_compare
 '.endReport
 '                sub     ptrb,#7
 'DAT
+                mov pad_tmp,#0
+
                 add     ptrb, #2
                 rdbyte  hpar1, ptrb++                   ' First array byte tells us if no keys down or keyboard error
                 cmp     hpar1, #KEY_ERR_UNDEF   wcz     ' First four key values in lookup table are "special" scancodes
         if_a    jmp     #.get_keys                      ' Process normal scancode
                 cmp     hpar1, #KEY_NO_KEY      wz
-        if_z    jmp     #.end_keys                      ' No key activity or key up event, so commit current to previous
+        if_z    jmp     #.get_keys                      ' No key activity or key up event, so commit current to previous
                 mov     ptra, kb_pre_report_p           ' Keyboard rollover overflow or other error
                 mov     pb, kb_cur_report_p
                 mov     hr0, #KBD_IN_RPT_LEN            ' This data can't be used for compare purposes in the future
@@ -2573,8 +2594,7 @@ hkbd_compare
                 add     hr3, kb_cur_report_p            ' Last scancode array element
 .next_key
                 cmp     hpar1, #KEY_NO_KEY      wz
-        if_z    jmp     #.end_keys                      ' No more pressed keys in the current report
-                call    #check_key                      ' Process this scancode
+        if_nz   call    #check_key                      ' Process this scancode
                 cmp     ptrb, hr3               wz      ' Check for array end
         if_nz   rdbyte  hpar1, ptrb++
         if_nz   jmp     #.next_key
@@ -2584,6 +2604,18 @@ hkbd_compare
         if_nz   mov     hkbd_repeat, #KBD_REPEAT_DELAY  ' Scancode was different than last,
         if_nz   mov     hkbd_poll_cnt, #0               ' so reset auto-repeat
         if_nz   wrbyte  hpar3, kb_last_key_p
+
+              ' Handle opposing pad directions, then write to buffer
+              test pad_tmp,pad_opposing+0 wc
+        if_nc andn pad_tmp,pad_opposing+0
+              test pad_tmp,pad_opposing+1 wc
+        if_nc andn pad_tmp,pad_opposing+1
+              test pad_tmp,pad_opposing+2 wc
+        if_nc andn pad_tmp,pad_opposing+2
+              test pad_tmp,pad_opposing+3 wc
+        if_nc andn pad_tmp,pad_opposing+3
+              wrlong pad_tmp,pPadReport
+
 .end
                 mov     ptra, kb_cur_report_p           ' Done processing current IN report
                 mov     pb, kb_pre_report_p
@@ -2607,6 +2639,34 @@ hkbd_compare
 '   hpar3 - scancode of the last key found in the down state.
 '------------------------------------------------------------------------------
 check_key
+              '' Hack: insert gamepad emu map scanning here
+              mov ptra,pPadMap
+
+              mov pb,#1
+.plp
+              rdlong htmp,ptra++
+              getbyte pa,htmp,#0
+              cmp pa, hpar1 wz
+        if_e  or pad_tmp,pb
+              shl pb,#1
+              getbyte pa,htmp,#1
+              cmp pa, hpar1 wz
+        if_e  or pad_tmp,pb
+              shl pb,#1
+              getbyte pa,htmp,#2
+              cmp pa, hpar1 wz
+        if_e  or pad_tmp,pb
+              shl pb,#1
+              getbyte pa,htmp,#3
+              cmp pa, hpar1 wz
+        if_e  or pad_tmp,pb
+              shl pb,#1 wz
+        if_nz jmp #.plp
+
+
+
+
+
                 mov     ptra, kb_pre_report_p
                 add     ptra, #2
                 mov     pb, kb_pre_report_p
@@ -2717,7 +2777,7 @@ hget_mouse_in_report
 .nak
                 add     hmouse_poll_cnt, #1             ' Use the NAK results as a timer for LED feedback
                 cmp     hmouse_poll_cnt, ##MOUSE_NAK_DELAY  wcz
-        if_ae   drvnot  host_active_led
+        'if_ae  drvnot  host_active_led
         if_ae   mov     hmouse_poll_cnt, #0
                 ret
 .data
@@ -2726,7 +2786,7 @@ hget_mouse_in_report
                 cmp     hpar3, #0               wz      ' hpar3 has actual byte count received
         if_z    jmp     #.nak
                 mov     hmouse_poll_cnt, #0
-                drvnot  host_active_led                 ' Show mouse activity on the feedback LED
+                'drvnot host_active_led                 ' Show mouse activity on the feedback LED
                 rdbyte  hpar1, ms_next_datax_p
                 cmp     hpar1, #PID_DATA0       wz
         if_z    mov     hpar1, #PID_DATA1               ' ACK, so toggle DATAx
@@ -2747,6 +2807,7 @@ hget_mouse_in_report
 
                 'RJA: Update mouse data in main Spin cog
                 'buttons
+                {
                 rdlong  mtemp1,pMouseButtons  'RJA:  update buttons with any new flags
                 getbyte mtemp2,hr0,#0
                 mov     mtemp1,mtemp2
@@ -2775,7 +2836,7 @@ hget_mouse_in_report
                 cmp     mtemp2,mtemp1 wcz
         if_a    mov     mtemp2,mtemp1
                 wrlong  mtemp2,pMouseY
-
+                }
 
         _ret_   wxpin   #M_DATA, usb_event_pin
 ' */

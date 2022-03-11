@@ -84,36 +84,28 @@ coginit(HUBEXEC_NEW,long[$2C],0)
 ' setup 68000
 cpu_cog := coginit(HUBEXEC_NEW,long[$1C],0)
 
-usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0)
+usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
+
+' Keyboard to gamepad map
+usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
+usb.setEmuPadMapping( 1,usb.KEY_DOWN)           ' Down
+usb.setEmuPadMapping( 2,usb.KEY_LEFT)           ' Left
+usb.setEmuPadMapping( 3,usb.KEY_RIGHT)          ' Right
+usb.setEmuPadMapping( 4,usb.KEY_C)              ' B
+usb.setEmuPadMapping( 5,usb.KEY_V)              ' C
+usb.setEmuPadMapping( 6,usb.KEY_X)              ' A
+usb.setEmuPadMapping( 7,usb.KEY_ENTER)          ' START
+usb.setEmuPadMapping( 8,usb.KEY_F)              ' Z
+usb.setEmuPadMapping( 9,usb.KEY_D)              ' Y
+usb.setEmuPadMapping(10,usb.KEY_S)              ' X
+usb.setEmuPadMapping(11,usb.KEY_A)              ' MODE
+  ' TODO: Figure something out for player 2
+' Keyboard to gamepad map
+usb.setEmuPadMapping(16,usb.KEY_PageUp)
+usb.setEmuPadMapping(17,usb.KEY_PageDwn)
+usb.setEmuPadMapping(23,usb.KEY_End)
 
 repeat
-  tmp.[ 0] := usb.keystate(usb.KEY_UP)          ' Up
-  tmp.[ 1] := usb.keystate(usb.KEY_DOWN)        ' Down
-  tmp.[ 2] := usb.keystate(usb.KEY_LEFT)        ' Left
-  tmp.[ 3] := usb.keystate(usb.KEY_RIGHT)       ' Right
-  tmp.[ 4] := usb.keystate(usb.KEY_C)           ' B
-  tmp.[ 5] := usb.keystate(usb.KEY_V)           ' C
-  tmp.[ 6] := usb.keystate(usb.KEY_X)           ' A
-  tmp.[ 7] := usb.keystate(usb.KEY_ENTER)       ' START
-  tmp.[ 8] := usb.keystate(usb.KEY_F)           ' Z
-  tmp.[ 9] := usb.keystate(usb.KEY_D)           ' Y
-  tmp.[10] := usb.keystate(usb.KEY_S)           ' X
-  tmp.[11] := usb.keystate(usb.KEY_A)           ' MODE
-
-  tmp &= $FFF
-  ' Cancel opposing directions
-  if tmp.[0..1] == %11
-    tmp.[0..1] := %00
-  if tmp.[2..3] == %11
-    tmp.[2..3] := %00
-
-  word[$40] := tmp
-
-  ' TODO: Figure something out for player 2
-  'word[$42] := 0
-  word[$42].[0] := usb.keystate(usb.KEY_PageUp)
-  word[$42].[1] := usb.keystate(usb.KEY_PageDwn)
-  word[$42].[7] := usb.keystate(usb.KEY_End)
 
   tmp:=usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_R)
   if tmp&&!did_reset
