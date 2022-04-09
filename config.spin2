@@ -1,0 +1,79 @@
+OBJ vconst = "MegaVGA.spin2"
+CON
+
+SHOW_MENU = true
+
+'' if ROM supports both overseas 60Hz (USA) or domestic 60Hz (Japan) regions, this decides which one to use.
+'' (50Hz overseas is always the third choice)
+PREFER_OVERSEAS = true 
+
+' Enable one of these to select the exmem type to use
+#define USE_PSRAM16
+'#define USE_PSRAM4
+'#define USE_HYPER
+
+' For PSRAM (either type)
+PSRAM_CLK = 56
+PSRAM_SELECT = 57
+PSRAM_BASE = 40
+
+PSRAM_WAIT  = 10
+PSRAM_DELAY = 3
+
+' For HyperRAM
+HYPER_ACCESSORY = 0 ' Base pin for P2EVAL HyperRAM board
+HYPER_CLK    =  8+HYPER_ACCESSORY
+HYPER_RWDS   = 10+HYPER_ACCESSORY
+HYPER_SELECT = 12+HYPER_ACCESSORY
+HYPER_BASE   =  0+HYPER_ACCESSORY
+HYPER_RESET  = 15+HYPER_ACCESSORY
+
+HYPER_WAIT  = 28
+HYPER_DELAY = 1
+
+
+'' Ignore stuff below
+
+#ifdef USE_PSRAM4
+#define USE_PSRAM_EITHER
+#endif
+#ifdef USE_PSRAM16
+#define USE_PSRAM_EITHER
+#endif
+
+
+
+'{
+VIDEO_MODE = vconst.MODE_VGA3X
+VIDEO_SUBMODE = vconst.SUBMODE_NTSC
+
+VGA_BASEPIN = 32
+VGA_VSYNC   = VGA_BASEPIN + 4
+
+
+'}
+{
+VIDEO_MODE = vconst.MODE_SVID_AND_COMP
+VIDEO_SUBMODE = vconst.SUBMODE_NTSC
+
+VGA_BASEPIN = 24
+VGA_VSYNC   = 0
+'}
+{
+VIDEO_MODE = vconst.MODE_HDMI
+VIDEO_SUBMODE = 0
+
+VGA_BASEPIN = 32
+VGA_VSYNC   = 0
+'}
+
+AUDIO_LEFT  = 24+6
+AUDIO_RIGHT = AUDIO_LEFT + 1
+
+'' USB Keyboard/mouse.
+USB0_BASEPIN = 16             ' USB port0/port1 pin block
+NEXT_BASEPIN = 4              ' Add to BASEPIN for next USB port pin
+ENABLE_PIN   = 1              ' USB object enables port voltage protection
+DM_PIN       = 2              ' Add to BASEPIN
+
+

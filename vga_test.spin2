@@ -1,0 +1,32 @@
+CON
+
+_CLKFREQ = 10_000_000
+
+
+VIDEO_MODE = video.MODE_VGA2X
+
+VGA_BASEPIN = 32
+VGA_VSYNC   = VGA_BASEPIN + 4
+
+
+VAR
+long video_buffer[2*320]
+long linectr,vdp_mode
+long testbuffer[320]
+
+OBJ video : "MegaVGA"
+
+PUB main()
+
+
+video.start(@linectr,@vdp_mode,@video_buffer,VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC)
+
+longfill(@video_buffer,$FF00FF00,320)
+longfill(@video_buffer+1280,$00000000,320)
+video_buffer[320] := $FFFFFF00
+video_buffer[320+319] := $FFFFFF00
+longfill(@testbuffer,$FF000000,320)
+
+repeat
+
+

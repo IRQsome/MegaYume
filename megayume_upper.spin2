@@ -11,66 +11,73 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
+MY_VERSION = 01
 '' Note: this sucks. not as much.
 '' Perhaps more important note: use the included build.sh.
 
+#include "config.spin2"
+
 CON
 
-'{
-VIDEO_MODE = video.MODE_VGA3X
-VIDEO_SUBMODE = video.SUBMODE_NTSC
+MAX_PATH = 255
 
-VGA_BASEPIN = 48
-VGA_VSYNC   = VGA_BASEPIN + 4
+DIRENT_MAX = 4000
 
-'}
-{
-VIDEO_MODE = video.MODE_SVID_AND_COMP
-VIDEO_SUBMODE = 0
-
-VGA_BASEPIN = 40
-VGA_VSYNC   = 0
-'}
-{
-VIDEO_MODE = video.MODE_HDMI
-VIDEO_SUBMODE = 0
-
-VGA_BASEPIN = 32
-VGA_VSYNC   = 0
-'}
-
-AUDIO_LEFT  = 40+6
-AUDIO_RIGHT = AUDIO_LEFT + 1
-
-'' USB Keyboard/mouse.
-  USB0_BASEPIN = 16             ' USB port0/port1 pin block
-  NEXT_BASEPIN = 4              ' Add to BASEPIN for next USB port pin
-' EVENT_PIN    = BASEPIN        ' BASEPIN is also the EVENT repository
-' ACTIVITY_LED = BASEPIN        ' and the port activity LED
-  ENABLE_PIN   = 1              ' USB object enables port voltage protection
-  DM_PIN       = 2              ' Add to BASEPIN
-' DP_PIN       = BASEPIN + 3    ' DP is always DM_PIN + 1
-' P2 Eval board user LEDs (active low) lit if an USB port has a fatal error:
-  'USB0_ERROR_LED    = 56
+EXRAM_MAX = 8*1024*1024
 
 OBJ
 
 video : "MegaVGA"
 usb : "1CogKbM_rja3b"
+c : "libc.a"
+a : "fsadapter.c"
+
+#ifdef USE_PSRAM4
+exmem : "psram4drv.spin2"
+#endif
+#ifdef USE_PSRAM16
+exmem : "psram16drv.spin2"
+#endif
+#ifdef USE_HYPER
+exmem : "hyperdrv.spin2"
+#endif
 
 VAR
 
-long did_reset,cpu_cog
+long repeatkey,repeatnext
 
-PUB main() | tmp
+long smdrom,romsize,romfile,srmfile
 
+long exmem_mailbox[8*3]
+
+byte did_reset,cpu_cog,z80_cog,exmem_cog
+
+alignl
+byte curdir[MAX_PATH+1],tmppath[MAX_PATH+1]
+
+PUB main() | tmp, x, mirrors, tmp2
+
+org
+              ' allocate all the locks like some sort of maniac    
+              mov pa,#0
+              rep @.lockmadness,#16
+              locknew pb wc
+        if_nc bith pa,pb
+.lockmadness
+              ' deallocate all the ones we don't want
+              andn pa,##STATIC_LOCKS
+              mov pb,#0
+              rep @.lockmadness2,#16
+              shr pa,#1 wc
+        if_c  lockret pb
+              add pb,#1
+.lockmadness2
+end
 
 ' setup video driver
 video.start($F8,$64,long[$20],VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC,VIDEO_SUBMODE) '
 
 ' setup OPN2/PSG
-byte[$F0] := AUDIO_LEFT
-byte[$F1] := AUDIO_RIGHT
 coginit(HUBEXEC_NEW,long[$30],0)
 
 
@@ -78,13 +85,8 @@ coginit(HUBEXEC_NEW,long[$30],0)
 coginit(COGEXEC_NEW,long[$24],0)
 coginit(COGEXEC_NEW,long[$28],0)
 
-' setup Z80
-coginit(HUBEXEC_NEW,long[$2C],0)
-
-' setup 68000
-cpu_cog := coginit(HUBEXEC_NEW,long[$1C],0)
-
 usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
+
 
 ' Keyboard to gamepad map
 usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
@@ -101,9 +103,98 @@ usb.setEmuPadMapping(10,usb.KEY_S)              ' X
 usb.setEmuPadMapping(11,usb.KEY_A)              ' MODE
   ' TODO: Figure something out for player 2
 ' Keyboard to gamepad map
-usb.setEmuPadMapping(16,usb.KEY_PageUp)
-usb.setEmuPadMapping(17,usb.KEY_PageDwn)
-usb.setEmuPadMapping(23,usb.KEY_End)
+usb.setEmuPadMapping(16,usb.KEY_KP5)            ' Up
+usb.setEmuPadMapping(17,usb.KEY_KP2DWN)         ' Down
+usb.setEmuPadMapping(18,usb.KEY_KP1END)         ' Left
+usb.setEmuPadMapping(19,usb.KEY_KP3PGD)         ' Right
+usb.setEmuPadMapping(20,usb.KEY_Comma)          ' B
+usb.setEmuPadMapping(21,usb.KEY_Dot)            ' C
+usb.setEmuPadMapping(22,usb.KEY_M)              ' A
+usb.setEmuPadMapping(23,usb.KEY_KPEnter)        ' START
+usb.setEmuPadMapping(24,usb.KEY_L)              ' Z
+usb.setEmuPadMapping(25,usb.KEY_K)              ' Y
+usb.setEmuPadMapping(26,usb.KEY_J)              ' X
+usb.setEmuPadMapping(27,usb.KEY_H)              ' MODE
+
+  
+menu_vdp_init()
+if SHOW_MENU
+  do_opening()
+msgbox_simple(@"Mounting storage...")
+_mount(@"/sd",c._vfs_open_sdcard())
+'clearplane(MENU_PLANEA)
+if a.get_type(@"/sd/MEGAYUME")==1
+  c.strncpy(@curdir,@"/sd/MEGAYUME/",MAX_PATH)
+else
+  c.strncpy(@curdir,@"/sd/",MAX_PATH)
+'msgbox_simple(@"OK!")
+'waitkey(MENUKEY_CONFIRM)
+
+repeat
+
+  if SHOW_MENU
+    menu_vdp_init()
+
+    repeat
+      do_filechooser()
+      'msgbox_simple(@tmppath)
+      'waitkey(MENUKEY_CONFIRM)
+      case a.get_type(@tmppath)
+        0:
+          msgbox_simple(@"WTF?")
+          waitkey(MENUKEY_CONFIRM)
+          next
+        1:
+          c.strncpy(@curdir,@tmppath,MAX_PATH)
+          c.strncat(@curdir,@"/",MAX_PATH)
+          next ' go for another round
+        2:
+          'msgbox_simple(@"ROM ok?")
+          'waitkey(MENUKEY_CONFIRM)
+
+
+      if open_romfile(@tmppath) < 0
+        msgbox_simple(@"open error")
+        waitkey(MENUKEY_CONFIRM)
+        next
+      'c.sprintf(@tmppath,@"Rom size: %d",romsize)
+      'msgbox_simple(@tmppath)
+      'waitkey(MENUKEY_CONFIRM)
+      settile(MENU_PLANEA,0,0,"X"+ATTR_PAL2<<11)
+      exmem_start()
+      settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
+      do_load_rom()
+      byte[$E1].[6 addbits 1] := detect_region()
+
+      bytefill(MKRAM_BASE+$C000,0,$4000)
+      'msgbox_simple(@"lol")
+      'exmem_read(MKRAM_BASE+$C000,0,$4000,false)
+      'rom_read_block(MKRAM_BASE+$C000)
+      'bytemove(@tmppath,MKRAM_BASE+$C100,16)
+      'tmppath[16]:=0
+      'msgbox_simple(@tmppath)
+      'waitkey(MENUKEY_CONFIRM)
+
+      settile(MENU_PLANEA,0,0,"2"+ATTR_PAL2<<11)
+      quit
+
+    run_emulator()
+
+
+
+
+
+
+PRI run_emulator() | tmp
+
+exmem_stop()
+bytefill(MKRAM_BASE,0,$1_0000)
+bytefill(VRAM_BASE,0,$1_0000)
+
+' setup Z80
+z80_cog := coginit(HUBEXEC_NEW,long[$2C],0)
+' setup 68000
+cpu_cog := coginit(HUBEXEC_NEW,long[$1C],0)
 
 repeat
 
@@ -111,22 +202,938 @@ repeat
   if tmp&&!did_reset
     cogatn(decod cpu_cog)
   did_reset:=tmp
+  if usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_Esc)
+    quit
+
+repeat until locktry(ROM_LOCK)
+cogstop(cpu_cog)
+cogstop(z80_cog)
+
+tmp:=coginit(HUBEXEC_NEW,long[$2C],0) ' Start Z80 again so it can reset audio
+waitms(1)
+cogstop(tmp)
+
+lockrel(ROM_LOCK)
 
 
+PRI poll_menukeys() : keys
+
+if usb.keystate(usb.KEY_UP)
+  keys |= MENUKEY_UP
+if usb.keystate(usb.KEY_DOWN)
+  keys |= MENUKEY_DOWN
+if usb.keystate(usb.KEY_LEFT)
+  keys |= MENUKEY_LEFT
+if usb.keystate(usb.KEY_RIGHT)
+  keys |= MENUKEY_RIGHT
+
+if usb.keystate(usb.KEY_PAGEUP)
+  keys |= MENUKEY_PGUP
+if usb.keystate(usb.KEY_PAGEDWN)
+  keys |= MENUKEY_PGDOWN
+
+if usb.keystate(usb.KEY_Enter)
+  keys |= MENUKEY_CONFIRM
+if usb.keystate(usb.KEY_Esc) or usb.keystate(usb.KEY_Bkspace)
+  keys |= MENUKEY_BACK
+
+
+PRI open_romfile(name) | tmp
+
+tmp := __builtin_alloca(512)
+
+if romfile
+  c.fclose(romfile)
+romfile := c.fopen(name,@"rb")
+ifnot romfile
+  return -1
+
+smdrom := 0
+if c.fread(tmp,512,1,romfile) == 512
+  if long[tmp+$100] <> ("S"+"E"<<8+"G"<<16+"A"<<24) and word[tmp+8] == $BBAA
+    smdrom := 1
+
+c.fseek(romfile,0,SEEK_END)
+romsize := c.ftell(romfile)
+if smdrom
+  romsize -= 512
+c.fseek(romfile,smdrom?512:0,SEEK_SET)
+
+return smdrom
+
+PRI detect_region() : region | chr,tmp, got, i, valid
+
+tmp := __builtin_alloca(256)
+exmem_read(tmp,$100,256,false)
+if long[tmp+$00] <> ("S"+"E"<<8+"G"<<16+"A"<<24)
+  ' No SEGA header, assume the worst
+  return REGION_PREFERRED
+
+' Try parsing old style first
+got := 0
+valid := true
+repeat i from 0 to 2
+  case chr:=byte[tmp][$F0+i]
+    "J": got.[REGION_DOMESTIC_60HZ] := true
+    "U": got.[REGION_OVERSEAS_60HZ] := true
+    "E": got.[REGION_OVERSEAS_50HZ] := true
+    " ": ' nothing burger
+    other: valid:= false
+
+' Try parsing new style
+ifnot valid
+  got:=-1
+  repeat i from 0 to 2
+    case chr:=byte[tmp][$F0+i]
+      "0".."9":
+        if got < 0
+          got := chr-"0"
+          valid := true
+        else
+          valid := false
+      "A".."F":
+        if got < 0
+          got := chr-"A"+$A
+          valid := true
+        else
+          valid := false
+      " ": ' nothing burger
+      other: valid:= false
+  if got < 0
+    valid := false
+
+' got preferred 60Hz region?
+if valid == 0 or got == 0 or got.[REGION_PREFERRED]
+  return REGION_PREFERRED
+' got the other 60Hz region?
+if got.[REGION_NOT_PREFERRED]
+  return REGION_NOT_PREFERRED
+' Try PAL
+if got.[REGION_OVERSEAS_50HZ]
+  return REGION_OVERSEAS_50HZ
+
+return REGION_DOMESTIC_50HZ ' The nameless land named OHA...
+
+
+
+PRI do_load_rom() | tmp,x
+
+msgbox_simple(@"Loading ROM...")
+byte[$E0] := encod(romsize-1) ' Set rom size limit for lower code
+exmem_fill(0,0,8*1024*1024,true) ' Fill entire memory with zeroes
+tmp:=0
+repeat
+  x := (tmp*26)/romsize
+  settiles(MENU_PLANEA,7,7+x,14,14,258+ATTR_PAL2<<11)
+  settiles(MENU_PLANEA,7+x+1,7+26,14,14," "+ATTR_PAL2<<11)
+  rom_read_block(MKRAM_BASE+tmp&$4000)
+  if tmp
+    exmem_write(tmp-$4000,MKRAM_BASE+((tmp-$4000)&$4000),$4000,true)
+while (tmp+=$4000)<romsize
+exmem_write(tmp-$4000,MKRAM_BASE+((tmp-$4000)&$4000),$4000,false)
+
+PRI rom_read_block(dest) | i,j,tmp1,tmp2
+'' Read a 16K block of ROM data
+if tmp1 := $4000 - c.fread(dest,1,$4000,romfile)
+  bytefill(dest+$4000-tmp1,0,tmp1)
+' stupid super magic drive interleave
+' adapted from: https://stackoverflow.com/a/55112294
+if smdrom
+  i := $3FFF
+  org
+  .lp
+      mov j,i
+  .adj
+      shr j,#1 wc
+      bitnc j,#13
+      cmp i,j wc
+  if_b jmp #.adj
+      add i,dest
+      add j,dest
+      rdbyte tmp1,i
+      rdbyte tmp2,j
+      wrbyte tmp2,i
+      wrbyte tmp1,j
+      sub i,dest
+      djnf i,#.lp
+  end
+
+PRI exmem_start() | tmp,cogs,banks
+
+tmp := __builtin_alloca(8*4)
+cogs := __builtin_alloca(8*4)
+banks := __builtin_alloca(32*4)
+
+if exmem_cog
+  return
+
+long[tmp][0] := clkfreq
+long[tmp][1] := 1<<exmem.UNREGCLK_BIT
+#ifdef USE_HYPER
+long[tmp][2] := HYPER_RESET < 32 ? 1<<HYPER_RESET : 0
+long[tmp][3] := HYPER_RESET >= 32 ? 1<<HYPER_RESET : 0
+#else
+long[tmp][2] := 0
+long[tmp][3] := 0 
+#endif
+
+#ifdef USE_PSRAM16
+long[tmp][4] := PSRAM_BASE
+#elseifdef USE_PSRAM4
+long[tmp][4] := PSRAM_BASE
+#elseifdef USE_HYPER
+long[tmp][4] := HYPER_BASE
+#endif
+long[tmp][5] := banks
+long[tmp][6] := cogs
+long[tmp][7] := @exmem_mailbox[0]
+
+long[cogs][0]:=-1<<16 + %1_111<<12
+longfill(cogs+4,-1<<16,7)
+longfill(banks,negx,32)
+
+#ifdef USE_PSRAM16
+long[banks][0] := 512<<16 + (PSRAM_DELAY+1)<<13 + 1<<12 + 22
+long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
+#elseifdef USE_PSRAM4
+long[banks][0] := 128<<16 + (PSRAM_DELAY+1)<<13 + 1<<12 + 22
+long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
+#elseifdef USE_HYPER
+long[banks][0] := 128<<16 + (HYPER_DELAY+1)<<13 + 1<<12 + 22
+long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + 6<<25 ' Latency????
+#endif
+
+exmem_mailbox[0] := -1
+cogs := exmem.getDriverAddr()
+exmem_cog := coginit(COGEXEC_NEW,cogs,tmp)+1
+repeat while exmem_mailbox[0] ' wait for init so data structures can go dead
+
+PRI exmem_stop()
+if exmem_cog
+  exmem_sync()
+  cogstop((exmem_cog\0)-1)
+
+PRI exmem_sync()
+repeat while exmem_mailbox[0]
+
+PRI exmem_write(dst,src,length,async)
+exmem_sync()
+exmem_mailbox[2] := length
+exmem_mailbox[1] := src
+exmem_mailbox[0] := exmem.R_WRITEBURST + (dst & $fffffff)
+ifnot async
+  exmem_sync()
+
+PRI exmem_fill(dst,val,length,async)
+exmem_sync()
+exmem_mailbox[2] := length
+exmem_mailbox[1] := val
+exmem_mailbox[0] := exmem.R_WRITEBYTE + (dst & $fffffff)
+ifnot async
+  exmem_sync()
+
+PRI exmem_read(dst,src,length,async)
+exmem_sync()
+exmem_mailbox[2] := length
+exmem_mailbox[1] := dst
+exmem_mailbox[0] := exmem.R_READBURST + (src & $fffffff)
+ifnot async
+  exmem_sync()
+
+CON
+
+MENU_PLANEA = $C000
+MENU_PLANEB = $E000
+
+ATTR_PRIO = 1<<(15-11)
+ATTR_PAL0 = 0<<(13-11)
+ATTR_PAL1 = 1<<(13-11)
+ATTR_PAL2 = 2<<(13-11)
+ATTR_PAL3 = 3<<(13-11)
+ATTR_FLIP = 1<<(12-11)
+ATTR_MIRR = 1<<(11-11)
+
+VRAM_BASE = $3_0000
+MKRAM_BASE = $1_0000
+
+ROM_LOCK  = 7
+HINT_LOCK = 8
+VINT_LOCK = 9
+ZINT_LOCK = 10 ' Z80 VBlank IRQ is sorta independent
+
+STATIC_LOCKS = decod ROM_LOCK | decod HINT_LOCK | decod VINT_LOCK | decod ZINT_LOCK
+
+
+REGION_OVERSEAS_60HZ = %10 '' Americas
+REGION_DOMESTIC_60HZ = %00 '' Japan
+REGION_OVERSEAS_50HZ = %11 '' Europe, Australia
+REGION_DOMESTIC_50HZ = %01 '' Narnia, Gensokyo, Oz, Bielefeld
+
+REGION_PREFERRED = PREFER_OVERSEAS ? REGION_OVERSEAS_60HZ : REGION_DOMESTIC_60HZ
+REGION_NOT_PREFERRED = PREFER_OVERSEAS ? REGION_DOMESTIC_60HZ : REGION_OVERSEAS_60HZ
+
+
+MENUKEY_UP    = %0000_0001
+MENUKEY_DOWN  = %0000_0010
+MENUKEY_LEFT  = %0000_0100
+MENUKEY_RIGHT = %0000_1000
+
+MENUKEY_CONFIRM = %0001_0000
+MENUKEY_BACK    = %0010_0000
+
+MENUKEY_PGUP   = %0100_0000
+MENUKEY_PGDOWN = %1000_0000
+
+DIRLIST_HEIGHT = 21
+
+PRI do_opening() | y,ptr,vram
+
+screen_reset()
+ptr := @info_text_block
+vram := $2800
+y:=4
+repeat while byte[ptr]<>127
+  longfill(VRAM_BASE+vram,$1111_1111,32*8)
+  draw_shiftjis_string(ptr,VRAM_BASE+vram,1,2,32*2)
+  show_shiftjis_string(vram+/32 + ATTR_PAL2<<11,32,4,y++,MENU_PLANEA)
+  ptr += strsize(ptr)+1
+  vram += 32*8*4
+
+waitkey(MENUKEY_CONFIRM)
+
+DAT ' credits/info text
+info_text_block
+byte "              --　Ｍ　ｅ　ｇ　ａ　Ｙ　ｕ　ｍ　ｅ　--",0
+byte "           ＳＥＧＡ　Ｍｅｇａｄｒｉｖｅ　Ｅｍｕｌａｔｏｒ",0
+byte "                  ｆｏｒ　Ｐａｒａｌｌａｘ　Ｐ２",0
+byte "",0
+'byte "                                                                ",0
+'' There's a joke in here somewhere about neither ASCII nor katakana
+'' being able to fully render my name, but it got lost in encoding :/
+byte " Programmed by Ada Gottenstraeter / アダ・ゴテンスツレテル",0
+byte "    of ＩＲＱｓｏｍｅ　Ｓｏｆｔｗａｒｅ non-incorporated",0
+byte "",0
+byte " Additional programming:",0
+byte "   Johannes Ahlebrand - original PSG code",0
+byte "           Eric Smith - flexspin compiler",0
+byte "            Roger Loh - external memory drivers",0
+byte "",0
+byte " UI fonts used: ｢Misaki Gothic 2nd｣ and ｢funscii｣",0
+byte "",0
+byte " This program is free software under the MIT license.",0
+byte " See https://github.com/IRQsome/MegaYume for info.",0
+byte " THE SOFTWARE IS PROVIDED ｢AS IS｣, WITHOUT WARRANTY OF ANY KIND.",0
+byte "",0
+byte " Ｈｉｔ　ＣＯＮＦＩＲＭ　ｋｅｙ　ｔｏ　ｃｏｎｔｉｎｕｅ．．．",0
+byte "",0
+byte 127
+
+
+PRI do_filechooser() | keys,x,y,tmp,gotfiles,tmp2,attr,selection,position,dirty
+
+msgbox_simple(@"Accessing...")
+gotfiles := scandir()
+if gotfiles < 0
+  msgbox_simple(@"Directory error!!!")
+  waitkey(MENUKEY_CONFIRM)
+  return
+if c.strncmp(@curdir,@"/sd/",MAX_PATH) ' don't add updir into base dir (true root dir can't be enumerated)
+  fileenter(@"<go up>",0,gotfiles++)
+sortFiles(gotfiles)
+screen_reset()
+longfill(VRAM_BASE+$2800,0,32*8)
+draw_shiftjis_string(@curdir,VRAM_BASE+$2800,1,2,32*2)
+show_shiftjis_string($2800/32,32,2,3,MENU_PLANEA)
+
+
+
+
+selection := 0
+position := 0
+dirty := true
+repeatkey := 0
+
+repeat while poll_menukeys()
+
+repeat
+  if dirty\0
+    settiles(MENU_PLANEA,17,39,4,4," "+(ATTR_PAL0)<<11)
+    longfill(VRAM_BASE+$3000,$1111_1111,17*16*8)
+    repeat y from 0 to 17
+      show_shiftjis_string($3000/32+y*16 + ATTR_PAL2<<11,16,18,6+y,MENU_PLANEA)
+    if selection <= position
+      position := (selection-1) #> 0
+    if selection >= position+DIRLIST_HEIGHT-1
+      position := (selection-DIRLIST_HEIGHT+2) #> 0 <# gotfiles-DIRLIST_HEIGHT
+    repeat y from 4 to 4+DIRLIST_HEIGHT-1
+      tmp := y-4+position
+      attr := tmp == selection ? ATTR_PAL1 : ATTR_PAL2
+      if tmp < gotfiles
+        tmp2:=MKRAM_BASE+tmp*12
+        settile(MENU_PLANEA,2,y," "+attr<<11)
+        settile(MENU_PLANEA,3,y,byte[tmp2++]+256+attr<<11)
+        repeat x from 1 to 8
+          settile(MENU_PLANEA,x+3,y,byte[tmp2++]+attr<<11)
+          settile(MENU_PLANEA,12,y,(byte[tmp2] <> " "?".":" ")+attr<<11)
+        repeat x from 9 to 11
+          settile(MENU_PLANEA,x+4,y,byte[tmp2++]+attr<<11)
+          settile(MENU_PLANEA,16,y," "+attr<<11)
+      else
+        settiles(MENU_PLANEA,2,16,y,y," "+(ATTR_PAL2)<<11)
+
+    ifnot gotfiles
+      putstring(@"No Files...",18,4,MENU_PLANEA,ATTR_PAL0)
+    else
+      case byte[MKRAM_BASE+12*selection]
+        0:putstring(@"Go one folder up.",18,4,MENU_PLANEA,ATTR_PAL0)
+        1:putstring(@"Folder",18,4,MENU_PLANEA,ATTR_PAL0)
+        2:
+          putstring(@"ROM info:",18,4,MENU_PLANEA,ATTR_PAL0)
+          c.strncpy(@tmppath,@curdir,MAX_PATH-12)
+          filegetname(@tmppath+strsize(@tmppath),selection)
+          if open_romfile(@tmppath) < 0
+            draw_shiftjis_string(@"ＯＰＥＮ　ＥＲＲＯＲ？？？",VRAM_BASE+$3000+0*16*32,1,2,32)
+          else
+            rom_read_block(MKRAM_BASE+$C000)
+            if long[MKRAM_BASE+$C100] <> ("S"+"E"<<8+"G"<<16+"A"<<24)
+              draw_shiftjis_string(@"ＮＯ　ＳＥＧＡ　ＨＥＡＤＥＲ!!!",VRAM_BASE+$3000+0*16*32,1,2,32)
+            else
+              draw_shiftjis_string(@"Machine type:",VRAM_BASE+$3000+0*16*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C100,VRAM_BASE+$3000+(1*16+1)*32,1,2,16)
+              draw_shiftjis_string(@"Copyright:",VRAM_BASE+$3000+2*16*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C110,VRAM_BASE+$3000+(3*16+1)*32,1,2,16)
+              draw_shiftjis_string(@"Domestic name:",VRAM_BASE+$3000+4*16*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C120,VRAM_BASE+$3000+(5*16+1)*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C130,VRAM_BASE+$3000+(6*16+1)*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C140,VRAM_BASE+$3000+(7*16+1)*32,1,2,16)
+              draw_shiftjis_string(@"Overseas name:",VRAM_BASE+$3000+8*16*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C150,VRAM_BASE+$3000+(9*16+1)*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C160,VRAM_BASE+$3000+(10*16+1)*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C170,VRAM_BASE+$3000+(11*16+1)*32,1,2,16)
+              draw_shiftjis_string(@"ROM Serial:",VRAM_BASE+$3000+12*16*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C180,VRAM_BASE+$3000+(13*16+1)*32,1,2,16-2)
+            draw_shiftjis_string(smdrom?@"Super Magic Drive dump":@"Raw ROM image",VRAM_BASE+$3000+14*16*32,1,2,32)
+            c.sprintf(@tmppath,@"ROM Size: %d",romsize)
+            draw_shiftjis_string(@tmppath,VRAM_BASE+$3000+(15*16+0)*32,1,2,32)
+
+
+  settile(MENU_PLANEA,0,0,"0"+ATTR_PAL2<<11)
+  keys := poll_menukeys()
+  if keys & MENUKEY_BACK
+    repeat while poll_menukeys() & MENUKEY_BACK
+    tmppath[0] := 0
+    return
+  elseif keys & MENUKEY_CONFIRM and gotfiles
+    repeat while poll_menukeys() & MENUKEY_CONFIRM
+    c.strncpy(@tmppath,@curdir,MAX_PATH-12)
+    if byte[MKRAM_BASE+selection*12]==0 ' got directory up?
+      tmp := @tmppath+strsize(@tmppath)
+      tmp2 := 2
+      repeat while tmp > @tmppath and tmp2
+        if byte[tmp] == "/"
+          tmp2--
+        byte[tmp--] := 0
+    else
+      filegetname(@tmppath+strsize(@tmppath),selection)
+    return
+  else
+    tmp := selection
+    selection := handle_menu_move(keys,selection,gotfiles-1,DIRLIST_HEIGHT)
+    if tmp <> selection
+      dirty := 1
+
+PRI handle_menu_move(keys,current,max,pagelen) : r | tmp
+  tmp := 0
+  if ones(keys) <> 1
+    repeatkey := 0
+    return current
+  if repeatkey <> keys
+    repeatkey := keys
+    repeatnext := clkfreq+/2 + getct()
+    tmp := 1
+  elseif (getct()-repeatnext) >= 0
+    tmp := 1
+    repeatnext := clkfreq+/10 + getct()
+
+  ifnot tmp
+    return current
+
+  case encod keys
+    encod MENUKEY_UP:
+      return (current-1) #> 0
+    encod MENUKEY_DOWN:
+      return (current+1) <# max
+    encod MENUKEY_PGUP:
+      return (current-pagelen) #> 0
+    encod MENUKEY_PGDOWN:
+      return (current+pagelen) <# max
+    other:
+      return current
+
+
+PRI scandir() : got | dir,tmp,type
+
+c.strncpy(@tmppath,@curdir,MAX_PATH)
+if c.strncmp(@curdir,@"/sd/",MAX_PATH) ' if not root, remove slash for opening directory (WTF??)
+  tmppath[strsize(@tmppath)-1] := 0
+
+dir := c.opendir(@tmppath)
+ifnot dir
+  return -1
+
+repeat
+  tmp:= c.readdir(dir)
+  ifnot tmp
+    quit
+  c.strncpy(@tmppath,@curdir,MAX_PATH)
+  c.strncat(@tmppath,a.get_name(tmp),MAX_PATH)
+  ifnot type := a.get_type(@tmppath)
+    next
+  fileenter(a.get_name(tmp),type,got)
+  ifnot type == 1 or valid_rom_extension(got)
+    next
+  if ++got == DIRENT_MAX
+    quit
+
+
+c.closedir(dir)
+
+PRI fileenter(str,type,num) | pt
+
+pt := MKRAM_BASE+12*num
+byte[pt++] := type
+repeat 8
+  if byte[str] == 0 || byte[str] == "."
+    byte[pt++] := " "
+  else
+    byte[pt++] := byte[str++]
+if byte[str] == "."
+  str++
+repeat 3
+  if byte[str] == 0
+    byte[pt++] := " "
+  else
+    byte[pt++] := byte[str++]
+
+PRI valid_rom_extension(num) : r
+if check_extension(num,"B"+"I"<<8+"N"<<16)
+  return true
+if check_extension(num,"G"+"E"<<8+"N"<<16)
+  return true
+if check_extension(num,"M"+"D"<<8+" "<<16)
+  return true
+if check_extension(num,"S"+"M"<<8+"D"<<16)
+  return true
+return false
+
+PRI check_extension(num,ext) : r
+return long[MKRAM_BASE+12*num+9]&$FFFFFF == ext
+
+PRI filegetname(dst,num) | pt
+pt := MKRAM_BASE+12*num+1
+repeat 8
+  if byte[pt] <> " "
+    byte[dst++] := byte[pt]
+  pt++
+if byte[pt] <> " "
+  byte[dst++] := "."
+  repeat 3
+    if byte[pt] <> " "
+      byte[dst++] := byte[pt]
+    pt++
+byte[dst] := 0
+
+PRI sortFiles(length) : i | ip,jp,i2p,zonep,k,realsize,subsize,sizze,temp
+'' Sort the Files...
+
+  temp := __builtin_alloca(12)
+
+
+  if length < 2                                              ' no need to sort if < 2 entries
+    return
+
+  '' Non-recursive in-place sorting algorithm
+  '' As relayed to me by a friendly Discord user
+  '' (ported to spin and optimized by me)
+  subsize := 12
+  length *= 12
+  repeat while subsize < length
+    sizze := subsize<<1
+    repeat i from 0 to length-12 step sizze
+      jp := (ip:=MKRAM_BASE+i)+subsize
+      realsize := sizze <# (length-i)
+      i2p := ip
+      repeat k from 0 to realsize-12 step 12
+        if jp => (ip+realsize) or i2p => jp
+          'pass
+        elseif compareNames(i2p,jp) =< 0
+          i2p += 12
+        else
+          zonep := jp
+          repeat
+            if (zonep+12) == (ip+realsize)
+              longmove(temp, i2p,3)
+              longmove(i2p,jp,3)
+              longmove(jp,jp+12,(zonep-jp)>>2)
+              longmove(zonep,temp,3)
+              if jp == zonep
+                i2p += 12
+              else
+                k -= 12
+              quit
+            elseif compareNames(zonep+12,i2p) > 0
+              longmove(temp, i2p,3)
+              longmove(i2p,jp,3)
+              longmove(jp,jp+12,(zonep-jp)>>2)
+              longmove(zonep,temp,3)
+              if jp == zonep
+                i2p += 12
+              else
+                k -= 12
+              quit
+            zonep += 12
+    subsize := sizze
+
+PRI compareNames(first,second) : result
+repeat 12
+  if result := byte[first++] - byte[second++]
+      return
+return 0
+
+PRI screen_reset() | tmp
+clearplane(MENU_PLANEA)
+tmp := __builtin_alloca(40)
+c.sprintf(tmp,string($BA,$8F," MegaYume beta %02d ",$8C,$BB),MY_VERSION)
+putstring(tmp,20-strsize(tmp)+/2,1,MENU_PLANEA,ATTR_PAL0)
+
+
+PRI menu_vdp_init() | i, tmp
+
+  '' VRAM layout
+  '' $0000..$1FFF: ANSI font
+  '' $2000..$27FF: icons?
+  '' $C000..$FFFF: Stuffs
+
+  
+  repeat i from 0 to 63
+    long[long[$34]][  0+i] := (initpal[i]>>1) & $7F7F7F_00
+    long[long[$34]][ 64+i] := initpal[i]
+    long[long[$34]][128+i] := (initpal[i]>>1) | $808080_00
+
+  bytefill(VRAM_BASE,0,$1_0000)
+  longfill(long[$38],0,20)
+
+  long[$60][ 1] := 1<<VDPFLAG_H40 ' flags
+  long[$60][ 2] := MENU_PLANEA ' Plane A base
+  long[$60][ 3] := MENU_PLANEB ' Plane B base
+  long[$60][ 4] := $A000 ' Window base
+  long[$60][ 5] := $F800 ' Sprite base
+  long[$60][ 6] := $FC00 ' HScroll base
+  long[$60][ 7] := 1+6   ' Plane width (64)
+  long[$60][ 8] := 4     ' Plane height (32)
+  long[$60][ 9] := 0     ' No column scroll
+  long[$60][10] := 0     ' No line scroll
+  long[$60][11] := 0     ' Window column
+  long[$60][12] := 0*8   ' Window row
+  long[$60][13] := 0     ' BG color
+
+  'long[long[$3C]+8*4] := 255
+
+
+  ' Clear planes
+  wordfill(VRAM_BASE+MENU_PLANEA,$20,64*32)
+  wordfill(VRAM_BASE+MENU_PLANEB,$20,64*32)
+
+  unpack_ansi_font(VRAM_BASE,@wide_font,1,2)
+  longfill(VRAM_BASE+127*32,0,8) ' keep char 127 empty
+  iconcopy(VRAM_BASE+256*32,@dirup_icon)
+  iconcopy(VRAM_BASE+257*32,@folder_icon)
+  iconcopy(VRAM_BASE+258*32,@rom_icon)
+
+  screen_reset()
+
+PRI iconcopy(dst,src)
+repeat 8
+  long[dst] := long[src] rol 16
+  dst+=4
+  src+=4
+
+PRI unpack_ansi_font(vram,fontptr,bg,fg) | tmp,tmp2
+bg *= $1111_1111
+repeat (256*8)
+  tmp := byte[fontptr++]
+  asm
+    rev tmp
+    shr tmp,#24
+    mergeb tmp
+    qmul tmp,fg
+    getqx tmp
+    movbyts tmp,#%%1032
+    mov tmp2,bg
+    muxnibs tmp2,tmp
+  endasm
+  long[vram] := tmp2
+  vram+=4
+
+PRI waitkey(key)
+repeat until poll_menukeys() & key
+repeat while poll_menukeys() & key
+
+PRI msgbox_simple(str)
+msgbox_outline(14,2)
+putstring(str,7,13,MENU_PLANEA,0)
+
+PRI msgbox_outline(w,h)
+
+settiles(MENU_PLANEA,20-w,20+w,14-h,14+h," ")
+settiles(MENU_PLANEA,20-w,20+w,14-1-h,14-1-h,$90)
+settiles(MENU_PLANEA,20-w,20+w,14+1+h,14+1+h,$90)
+settiles(MENU_PLANEA,20-1-w,20-1-w,14-h,14+h,$91)
+settiles(MENU_PLANEA,20+1+w,20+1+w,14-h,14+h,$91)
+settile(MENU_PLANEA,20-1-w,14-1-h,$9F)
+settile(MENU_PLANEA,20-1-w,14+1+h,$9D)
+settile(MENU_PLANEA,20+1+w,14-1-h,$9E)
+settile(MENU_PLANEA,20+1+w,14+1+h,$9C)
+
+PRI settile(plane,x,y,tile)
+word[VRAM_BASE+plane][y<<6+x] := tile
+
+PRI settiles(plane,x1,x2,y1,y2,tile) | i
+if x2 >= x1 and y2 >= y1
+  plane += VRAM_BASE
+  repeat i from y1 to y2
+    wordfill(plane+(i<<6+x1)<<1,tile,x2-x1+1)
+
+PRI clearplane(plane)
+settiles(plane,0,40,0,28," ")
+
+PRI putstring(ptr,x,y,plane,attr)
+attr<<=11
+if y>=+32
+  return
+repeat while x<+40 and byte[ptr]
+  settile(plane,x++,y,byte[ptr++]|attr)
+
+PRI show_shiftjis_string(basetile,len,x,y,plane)
+plane += VRAM_BASE + (y<<6+x)<<1
+repeat len
+  word[plane]:=basetile++
+  plane+=2
+
+PRI draw_shiftjis_string(ptr,basetile,bg,fg,maxbytes) : bytes | tmp
+bg*=$1111_1111
+repeat
+  tmp:=draw_shiftjis_char(ptr+bytes,basetile,bg,fg,bytes,(bytes+1)==maxbytes)
+  if tmp < 0
+    quit
+  if (bytes + tmp) >= maxbytes
+    quit
+  bytes += tmp
+
+PRI draw_shiftjis_char(ptr,basetile,bg,fg,bytes,lastbyte) : consumed | first, tmp, tmp2, tmp3, tmp4, tmp5
+
+case first := byte[ptr]
+  $20..$7F: ' ASCII range
+    basetile += (bytes&1)<<1 + (bytes>>1)<<5
+    tmp := @narrow_font+(first-$20)<<3
+    repeat 8
+      asm
+        rdbyte tmp2,tmp
+        getnib tmp2,tmp2,#0
+        mergeb tmp2
+        mul tmp2,fg
+        mov tmp5,bg
+        muxnibs tmp5,tmp2
+        wrword tmp5,basetile
+      endasm
+      tmp+=1
+      basetile+=4
+    return 1
+  $A0..$FF: ' narrow katakana range
+    basetile += (bytes&1)<<1 + (bytes>>1)<<5
+    tmp := @narrow_font+(first-$A0)<<3
+    repeat 8
+      asm
+        rdbyte tmp2,tmp
+        getnib tmp2,tmp2,#1
+        mergeb tmp2
+        mul tmp2,fg
+        mov tmp5,bg
+        muxnibs tmp5,tmp2
+        wrword tmp5,basetile
+      endasm
+      tmp+=1
+      basetile+=4
+    return 1
+  $81..$9F,$E0..$FF: ' JIS lead bytes
+    if lastbyte
+      return -1
+    basetile += (bytes&1)<<1 + (bytes>>1)<<5
+    tmp := byte[ptr+1]
+    case first
+      $81..$84: ' Rows 1 through 8
+        tmp4 := (first-$81)<<1
+      $87:      ' Row 13/14
+        if tmp < $9F
+          tmp4 := (13-5)
+        else
+          tmp4 := -1
+      $88:      ' Row 15/16
+        if tmp < $9F
+          tmp4 := -1
+        else
+          tmp4 := (16-8)
+      $89..$97: ' Rows 17 through 46
+        tmp4 := ((first-$84)<<1)
+      $98: ' Row 47/48 (Level 1 only goes to row 47)
+        if tmp < $9F
+          tmp4 := (47-7)
+        else
+          tmp4 := -1
+      other:
+        tmp4 := -1
+    tmp4 *= 94
+    if tmp4<0 or tmp < $40 or tmp > $FB or tmp==$7F
+      tmp := 8 ' question mark
+    elseif tmp < $7F ' odd row (low continuation)
+      tmp := tmp-$40 + tmp4
+    elseif tmp < $9F ' odd row (high continuation)
+      tmp := tmp-$41 + tmp4
+    else ' even row
+      tmp := tmp-$9F + 94 + tmp4
+
+    tmp := @jis_font+tmp<<3
+    tmp3 := (bytes&1) ? 30 : 2
+    repeat 8
+      asm
+        rdbyte tmp4,tmp
+        getnib tmp2,tmp4,#1
+        mergeb tmp2
+        mul tmp2,fg
+        mov tmp5,bg
+        muxnibs tmp5,tmp2
+        wrword tmp5,basetile
+        add basetile,tmp3
+        getnib tmp2,tmp4,#0
+        mergeb tmp2
+        mul tmp2,fg
+        mov tmp5,bg
+        muxnibs tmp5,tmp2
+        wrword tmp5,basetile
+        sub basetile,tmp3
+      endasm
+      tmp+=1
+      basetile+=4
+    return 2
+
+
+  0: return -1
+  other: return 1 ' silently consume unknown byte
+{
+PRI ram_readburst(exaddr,hubaddr,longs)
+#ifdef USE_PSRAM16
+#error "NYI"
+#elseifdef USE_PSRAM4
+#error "NYI"
+#elseifdef USE_HYPER
+#error "NYI"
+#else
+  longmove(hubaddr,$4_0000+exaddr,longs)
+#endif
+}
 DAT
-      {
-vga_timing         'VGA resolution 640x480 60Hz with 25.2MHz pixel clock
-            long   0'$01C732FB
-            long   327_600_000
 
-                   '_HSyncPolarity___FrontPorch__SyncWidth___BackPorch__Columns
-                   '     1 bit         7 bits      8 bits      8 bits    8 bits
-            long   (video.SYNC_NEG<<31) | ( 16<<24) | ( 96<<16) | ( 48<<8 ) | (640/8)
+jis_font file "MISAKI8W.DAT"
+narrow_font file "MISAKI4W.DAT"
+wide_font file "FUNSCII.DAT"
 
-                   '_VSyncPolarity___FrontPorch__SyncWidth___BackPorch__Visible
-                   '     1 bit         8 bits      3 bits      9 bits   11 bits
-            long   (video.SYNC_NEG<<31) | ( 10<<23) | (  2<<20) | ( 33<<11) | 480
-            long   13 << 8 ' $0ccccccc+1
-            long   0
-            long   0   ' reserved for CFRQ parameter
-            }
+initpal
+        long $FF00FF_00
+        long $444444_00
+        long $EEEEEE_00
+        long $E7C518_00
+        long $D0D0D0_00
+        long $646464_00
+        long $404040_00
+        long $6B5B0B_00
+        long $FF0000_00[8]
+
+        long $FF00FF_00
+        long $882222_00
+        long $FFFFFF_00
+        long $E7C518_00
+        long $D0D0D0_00
+        long $646464_00
+        long $404040_00
+        long $6B5B0B_00
+        long $FF0000_00[8]
+
+        long $FF00FF_00
+        long $000000_00
+        long $CCCCCC_00
+        long $E7C518_00
+        long $D0D0D0_00
+        long $646464_00
+        long $404040_00
+        long $6B5B0B_00
+        long $FF0000_00[8]
+
+        long $FF00FF_00
+        long $444444_00
+        long $EEEEEE_00
+        long $E7C518_00
+        long $D0D0D0_00
+        long $646464_00
+        long $404040_00
+        long $6B5B0B_00
+        long $FF0000_00[8]
+
+dirup_icon
+        long $1111_1111
+        long $3337_7711
+        long $3363_3331
+        long $3666_3331
+        long $3363_3331
+        long $3366_6631
+        long $3333_3331
+        long $1111_1111
+
+folder_icon
+        long $1111_1111
+        long $3337_7711
+        long $3333_3331
+        long $3333_3331
+        long $3333_3331
+        long $3444_4431
+        long $3433_3431
+        long $1111_1111
+
+rom_icon
+        long $1555_5511
+        long $4565_5541
+        long $1555_5511
+        long $4555_5541
+        long $1555_5511
+        long $4555_5541
+        long $1555_5511
+        long $1111_1111
+
+
+CON
+
+VDPFLAG_VINT = 9
+VDPFLAG_HINT = 8
+
+VDPFLAG_WINDOWN = 7
+VDPFLAG_WINRIGHT = 6
+
+VDPFLAG_BLANK = 4
+VDPFLAG_SHADHL = 3
+VDPFLAG_LACED_DOUBLERES = 2
+VDPFLAG_LACED_OUTPUT = 1
+VDPFLAG_H40 = 0
+
+CON
+SEEK_SET  = 0
+SEEK_CUR  = 1
+SEEK_END  = 2
