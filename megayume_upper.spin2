@@ -453,8 +453,10 @@ ATTR_PAL3 = 3<<(13-11)
 ATTR_FLIP = 1<<(12-11)
 ATTR_MIRR = 1<<(11-11)
 
+' These have to match lower code
 VRAM_BASE = $3_0000
 MKRAM_BASE = $1_0000
+SRAM_BASE = $4_0000
 
 ROM_LOCK  = 7
 HINT_LOCK = 8

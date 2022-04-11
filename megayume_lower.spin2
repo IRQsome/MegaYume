@@ -54,7 +54,7 @@ ZINT_LOCK = 10 ' Z80 VBlank IRQ is sorta independent
 
 STATIC_LOCKS = decod ROM_LOCK | decod HINT_LOCK | decod VINT_LOCK | decod ZINT_LOCK
 
-UPPER_LOAD = $4_0000
+UPPER_LOAD = $5_0000
 
 
 
@@ -8010,6 +8010,13 @@ z80_romio_area
               orgh $3_0000
 vdp_ram
               byte 0[$1_0000] ' Graphics RAM
+
+
+              orgh $4_0000
+save_ram
+              byte 0[$1_0000] ' Non-volatile SRAM
+
+
 
 {
               orgh $4_0000
