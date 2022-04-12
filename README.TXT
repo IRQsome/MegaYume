@@ -20,6 +20,7 @@ Features include:
   - Low latency framebuffer-less high-level emulation
   - Pretty decent FM sound
   - 6 button controller support
+  - SRAM save support
   - Video output over VGA, HDMI, S-video or Composite
   - USB Keyboard input (somewhat easy to hack in other devices)
   - Buuuuggggssss!!

@@ -138,6 +138,13 @@ vdp_cyc2hcnt_w          word 0 ' reciporal of cycles-per-pixel
 ' More stuff set by upper code
 rom_zerox               byte 22 ' < $E0 - number of valid bits in ROM address - 1 (22 -> 8MB)
 machine_version         byte USE_REGION<<6 ' < $E1: version register value
+                        byte 0 ' padding
+sram_bankreg            byte %10 ' < $E3: $A130F1 reg value. bit0 enables SRAM banking, bit 1 *locks* SRAM (zero unlocks)
+sram_write_tstamp       long 0 ' $E4: last write time stamp (|1 so as to never be zero)
+sram_map_start          long -1 ' < $E8: SRAM start address
+sram_map_end            long -1 ' < $EC: SRAM end address
+
+
 
 
               orgh $F8
@@ -715,6 +722,9 @@ mk_wr16_io
         if_ae jmp #vdpio_write16
               cmp mk_eacache,mk_iog_begin wc
         if_ae jmp #iog_write16
+              cmp mk_eacache,mk_sram_begin wc
+        if_ae cmpr mk_eacache,mk_sram_stop wc
+        if_ae jmp #sram_write16
               debug("undecoded IO WORD WRITE: ",uhex_(mk_effaddr),uhex_long(mk_virtualpc))
               ret wcz ' undecoded IO?
 mk_rd16_io
@@ -722,6 +732,9 @@ mk_rd16_io
         if_ae jmp #vdpio_read16
               cmp mk_eacache,mk_iog_begin wc
         if_ae jmp #iog_read16
+              cmp mk_eacache,mk_sram_begin wc
+        if_ae cmpr mk_eacache,mk_sram_stop wc
+        if_ae jmp #sram_read16
               debug("undecoded IO WORD READ: ",uhex(mk_effaddr))
               ret wcz ' undecoded IO?
 mk_rd8_io
@@ -729,6 +742,9 @@ mk_rd8_io
         if_ae jmp #vdpio_read8
               cmp mk_eacache,mk_iog_begin wc
         if_ae jmp #iog_read8
+              cmp mk_eacache,mk_sram_begin wc
+        if_ae cmpr mk_eacache,mk_sram_stop wc
+        if_ae jmp #sram_read8
               mov mk_memvalue,#0 ' TODO
               ret wcz
 mk_wr8_io
@@ -737,6 +753,9 @@ mk_wr8_io
         if_ae jmp #vdpio_write8
               cmp mk_eacache,mk_iog_begin wc
         if_ae jmp #iog_write8
+              cmp mk_eacache,mk_sram_begin wc
+        if_ae cmpr mk_eacache,mk_sram_stop wc
+        if_ae jmp #sram_write8
               mov mk_memvalue,#0 ' TODO
               ret wcz
 
@@ -854,7 +873,6 @@ mk_flowop_impl_tbl
               long mk_hub_rtr
 
 
-mk_rom_stop   long $00_800000 ' Without MegaCD, $400000..$7FFFFF is a ROM mirror
 mk_iog_begin  long $00_A00000
 mk_vdp_begin  long $00_C00000
 mk_ram_begin  long $00_E00000
@@ -887,6 +905,10 @@ mk_cogvar_start
 
 mk_debug_tripwire long $00173E
 mk_debug_ctr  long 0
+
+mk_rom_stop   res 1
+mk_sram_begin res 1
+mk_sram_stop  res 1
 
 mk_virtualpc  res 1 ' PC in virtual space
 mk_effaddr    res 1 ' calculated effective address
@@ -2742,6 +2764,13 @@ mk_init
               rdbyte mk_romio_zerox,#rom_zerox
               sub mk_romio_zerox,#2 ' we apply it to long-unit addresses
 
+              rdlong mk_sram_begin,#sram_map_start
+              rdlong mk_sram_stop,#sram_map_end
+
+              ' Reset ROM/SRAM mapping
+              rdbyte mk_memvalue,#sram_bankreg
+              call #sram_set_bank
+
 #ifdef USE_PSRAM_EITHER
               fltl #PSRAM_CLK
               wrpin ##P_TRANSITION|P_OE, #PSRAM_CLK
@@ -2841,6 +2870,8 @@ iog_write16
               testb mk_eacache,#16 wc
         if_nc jmp #zbus_write16
               testb mk_eacache,#12 wc
+              testb mk_eacache,#13 wz
+        if_c_and_z  jmp #time_write16
         if_c  shr mk_memvalue,#8
         if_c  jmp #iog_z80_ctrl
               mov mk_memtmp0,mk_eacache
@@ -2853,6 +2884,8 @@ iog_write8
               testb mk_eacache,#16 wc
         if_nc jmp #zbus_write
               testb mk_eacache,#12 wc
+              testb mk_eacache,#13 wz
+        if_c_and_z  jmp #time_write8
         if_c  jmp #iog_z80_ctrl
               mov mk_memtmp0,mk_eacache
               shr mk_memtmp0,#1 wc
@@ -2934,6 +2967,19 @@ iog_write8_internal
               addct2 mk_memtmp2,mk_memtmp0
               ret wcz
 
+time_write16
+              getbyte mk_memtmp0,mk_eacache,#0
+              bith mk_memtmp0,#0
+              jmp #time_write_internal
+time_write8
+              getbyte mk_memtmp0,mk_eacache,#0
+              bith mk_memtmp0,#0 wcz
+        if_nc ret wcz ' ignore even address
+time_write_internal
+              cmp mk_memtmp0,#$F1 wz
+        if_z  jmp #sram_set_bank
+              ' Undecoded....
+              ret wcz
 
 
 zbus_write16
@@ -3147,6 +3193,70 @@ iog_z80_poll
               rdbyte mk_memvalue,#zbus_status
               and mk_memvalue,#1
               ret wcz
+
+DAT ' SRAM handlers
+
+sram_set_bank ' $A130F1 handler
+              'drvh #38
+              and mk_memvalue,#%11
+              wrbyte mk_memvalue,#sram_bankreg
+              ' Handle banking
+              cmps mk_sram_begin,#0 wc
+        if_nc testbn mk_memvalue,#0 wc
+        if_nc mov mk_rom_stop,mk_sram_begin
+        if_nc bitl mk_rom_stop,#0 ' force word alignment
+        if_c  decod mk_rom_stop,#encod $00_80_0000 ' Without MegaCD, $400000..$7FFFFF is a ROM mirror
+              ret wcz
+
+
+sram_write16
+              'drvh #39
+              rdbyte pa,#sram_bankreg
+              testb pa,#1 wc
+        if_c  ret wcz ' SRAM locked
+              loc pa,#save_ram
+              add pa,mk_eacache
+              sub pa,mk_sram_begin
+              '' upper code guarantees that SRAM range isn't too large for buffer
+              movbyts mk_memvalue,#%%2301
+              wrword mk_memvalue,pa
+
+              getct pa
+              or pa,#1
+              wrlong pa,#sram_write_tstamp
+              ret wcz
+
+sram_write8
+              'drvh #39
+              rdbyte pa,#sram_bankreg
+              testb pa,#1 wc
+        if_c  ret wcz ' SRAM locked
+              loc pa,#save_ram
+              add pa,mk_eacache
+              sub pa,mk_sram_begin
+              '' upper code guarantees that SRAM range isn't too large for buffer
+              wrbyte mk_memvalue,pa
+
+              getct pa
+              or pa,#1
+              wrlong pa,#sram_write_tstamp
+              ret wcz
+
+sram_read16
+              loc pa,#save_ram
+              add pa,mk_eacache
+              sub pa,mk_sram_begin
+              rdword mk_memvalue,pa
+              movbyts mk_memvalue,#%%2301
+              ret wcz
+
+sram_read8
+              loc pa,#save_ram
+              add pa,mk_eacache
+              sub pa,mk_sram_begin
+              rdbyte mk_memvalue,pa
+              ret wcz
+
 
 
 

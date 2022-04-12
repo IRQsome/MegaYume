@@ -11,7 +11,7 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
-MY_VERSION = 01
+MY_VERSION = 02
 '' Note: this sucks. not as much.
 '' Perhaps more important note: use the included build.sh.
 
@@ -164,22 +164,30 @@ repeat
       exmem_start()
       settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
       do_load_rom()
+
       byte[$E1].[6 addbits 1] := detect_region()
 
-      bytefill(MKRAM_BASE+$C000,0,$4000)
-      'msgbox_simple(@"lol")
-      'exmem_read(MKRAM_BASE+$C000,0,$4000,false)
-      'rom_read_block(MKRAM_BASE+$C000)
-      'bytemove(@tmppath,MKRAM_BASE+$C100,16)
-      'tmppath[16]:=0
-      'msgbox_simple(@tmppath)
-      'waitkey(MENUKEY_CONFIRM)
+      ' remove extension from tmppath
+      tmp := strsize(@tmppath)
+      repeat while --tmp >= 0
+        case tmppath[tmp]
+          ".":
+            tmppath[tmp] := 0
+            quit
+          "/": quit
+      ' add SRM extnesion
+      c.strncat(@tmppath,@".SRM",MAX_PATH)
+
+      init_sram(@tmppath)
+      bytefill(MKRAM_BASE,0,$10000)
 
       settile(MENU_PLANEA,0,0,"2"+ATTR_PAL2<<11)
       quit
 
     run_emulator()
-
+    if srmfile
+      flush_sram()
+      c.fclose(srmfile\0)
 
 
 
@@ -204,6 +212,11 @@ repeat
   did_reset:=tmp
   if usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_Esc)
     quit
+
+  ' Autosave SRAM if last write was 3 seconds ago
+  if srmfile and long[$E4] and (getct() - long[$E4]) >= clkfreq*3
+    long[$E4] := 0 ' clear first, so if we get another write while we're busy, it will still be autosaved later
+    flush_sram()
 
 repeat until locktry(ROM_LOCK)
 cogstop(cpu_cog)
@@ -260,6 +273,77 @@ if smdrom
 c.fseek(romfile,smdrom?512:0,SEEK_SET)
 
 return smdrom
+
+PRI eswap32(val) : r
+r := val
+asm
+  movbyts r,#%%0123
+endasm
+
+PRI init_sram(srmpath) | tmp,sram_is_nvram,open_existing
+
+' init to disabled state
+bytefill(SRAM_BASE,$FF,$10000)
+long[$EC] := long[$E8] := -1
+long[$E4] := 0
+byte[$E3] := %10
+sram_is_nvram := 0
+if srmfile
+  msgbox_simple(@"srmfile leak?")
+  waitkey(MENUKEY_CONFIRM)
+  c.fclose(srmfile\0)
+
+tmp := __builtin_alloca(256)
+exmem_read(tmp,$100,256,false)
+
+if word[tmp+$B0] == ("R"+"A"<<8) and byte[tmp+$B3] == $20
+  sram_is_nvram := byte[tmp+$B2].[6]
+  long[$E8] := eswap32(long[tmp+$B4]) zerox 23 ' sram start
+  long[$EC] := eswap32(long[tmp+$B8]) zerox 23 ' sram end
+
+'' Sanity checks and hacks
+if long[$EC]-long[$E8] +> $FFFF ' end before start or larger than 64k
+  long[$EC] := long[$E8]+$FFFF
+
+if long[$E8] +>= $80_0000 ' header mistake (or weird thing we don't support?)
+  sram_is_nvram := false
+  long[$EC] := long[$E8] := -1
+
+'c.sprintf(tmp,@"RAM: %08X..%08X",long[$E8],long[$EC])
+'msgbox_simple(tmp)
+'waitkey(MENUKEY_CONFIRM)
+
+if long[$E8] >= romsize
+  byte[$E3] := %01 ' initialize to enabled state
+
+
+'' open srmfile if need be
+if sram_is_nvram
+  open_existing := a.exists(srmpath)
+  if open_existing
+    srmfile := c.fopen(srmpath,@"r+b")
+    ifnot srmfile
+      msgbox_simple(@"Failed to open save file!")
+      waitkey(MENUKEY_CONFIRM)
+    else
+      c.fread(SRAM_BASE,1,$1_0000,srmfile)
+      msgbox_simple(@"Save open OK!")
+      waitkey(MENUKEY_CONFIRM)
+  else
+    srmfile := c.fopen(srmpath,@"w+b")
+    ifnot srmfile
+      msgbox_simple(@"Failed to create save file!")
+      waitkey(MENUKEY_CONFIRM)
+    else
+      c.fwrite(SRAM_BASE,1,$1_0000,srmfile)
+      msgbox_simple(@"Save create OK!")
+      waitkey(MENUKEY_CONFIRM)
+
+PRI flush_sram()
+c.fseek(srmfile,0,SEEK_SET)
+c.fwrite(SRAM_BASE,1,$1_0000,srmfile)
+c.fflush(srmfile)
+
 
 PRI detect_region() : region | chr,tmp, got, i, valid
 

@@ -15,3 +15,8 @@ int get_type(const char *path) {
     }
     return 0;
 }
+
+int exists(const char *path) {
+    struct stat buf;
+    return stat(path,&buf) == 0;
+}
