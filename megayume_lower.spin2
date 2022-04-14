@@ -138,7 +138,7 @@ vdp_cyc2hcnt_w          word 0 ' reciporal of cycles-per-pixel
 ' More stuff set by upper code
 rom_zerox               byte 22 ' < $E0 - number of valid bits in ROM address - 1 (22 -> 8MB)
 machine_version         byte USE_REGION<<6 ' < $E1: version register value
-                        byte 0 ' padding
+atn_command             byte 0 ' < $E2: 68k COGATN command.
 sram_bankreg            byte %10 ' < $E3: $A130F1 reg value. bit0 enables SRAM banking, bit 1 *locks* SRAM (zero unlocks)
 sram_write_tstamp       long 0 ' $E4: last write time stamp (|1 so as to never be zero)
 sram_map_start          long -1 ' < $E8: SRAM start address
@@ -223,7 +223,7 @@ mk_nextop
               'debug("registers: ",ubin_word(mk_sr),13,uhex_reg_array(#mk_d0,#8),13,uhex_reg_array(#mk_a0,#8))
               'debug("last 16 RAM bytes: ",uhex_byte_array(#main_ram + $FFF0,#16))
               'tjnz mk_debug_ctr,#mk_nextop_nohook
-              jatn mk_resetptr
+              jatn mk_cogatnptr
 mk_ihook1     nop
 mk_ihook2     nop
 mk_nextop_nohook
@@ -257,7 +257,7 @@ mk_nextop_nohook
 
 mk_irq4ptr    long @mk_hub_irq4
 mk_irq6ptr    long @mk_hub_irq6
-mk_resetptr   long @mk_hub_hotreset
+mk_cogatnptr  long @mk_hub_cogatn
 
 mk_write_second_reg_or_ea '' for ops that have two directional modes
               testb mk_opword,#8 wc
@@ -1942,7 +1942,9 @@ mk_hub_stop
                mov mk_memvalue,mk_optmp1
                call #mk_wr_sr
 .waitloop
-              JATN mk_resetptr
+              pollatn wc
+        if_c  rdbyte pb,#atn_command wc
+        if_c  jmp #mk_hub_hotreset
               getnib pb,mk_sr,#2
               cmp pb,#6 wc
         if_b  JSE2 mk_irq6ptr
@@ -2709,6 +2711,13 @@ mk_hub_chk
               bitl mk_sr,#MK_NEG_BIT
               jmp #mk_hub_trapit
 
+mk_hub_cogatn
+              rdbyte pb,#atn_command wcz
+        if_z  jmp #mk_nextop
+        if_c  jmp #mk_hub_hotreset
+              jmp #mk_hub_cogatn
+
+
 DAT ' MotoKore 68000 init code
 
 
@@ -2817,6 +2826,7 @@ mk_init
 .vswaplp
 
 mk_hub_hotreset
+              wrbyte #0,#atn_command
               mov mk_sr,##MK_SUPER_MASK + (7<<8)
               'call #mk_check_core_integrity
               ' initialize PC and SP

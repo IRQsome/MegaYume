@@ -50,7 +50,7 @@ long smdrom,romsize,romfile,srmfile
 
 long exmem_mailbox[8*3]
 
-byte did_reset,cpu_cog,z80_cog,exmem_cog
+byte cpu_cog,z80_cog,exmem_cog
 
 alignl
 byte curdir[MAX_PATH+1],tmppath[MAX_PATH+1]
@@ -193,7 +193,9 @@ repeat
 
 
 
-PRI run_emulator() | tmp
+PRI run_emulator() | tmp,did_reset,did_pause,should_pause
+
+did_pause := did_reset := should_pause := 0
 
 exmem_stop()
 bytefill(MKRAM_BASE,0,$1_0000)
@@ -207,9 +209,20 @@ cpu_cog := coginit(HUBEXEC_NEW,long[$1C],0)
 repeat
 
   tmp:=usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_R)
-  if tmp&&!did_reset
+  if tmp and not did_reset
+    byte[$E2] := 255
     cogatn(decod cpu_cog)
   did_reset:=tmp
+
+  tmp := usb.keystate(usb.KEY_PAUSE)
+  if tmp and not did_pause
+    should_pause := true
+  did_pause:=tmp
+  if should_pause and long[$F8] +< 224 ' only toggle 86k pause during active scan to avoid garbage
+    if byte[$E2] ^= 1
+      cogatn(decod cpu_cog)
+    should_pause := false
+
   if usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_Esc)
     quit
 
