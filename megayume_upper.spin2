@@ -136,7 +136,8 @@ repeat
     menu_vdp_init()
 
     repeat
-      do_filechooser()
+      ifnot do_filechooser()
+        next
       'msgbox_simple(@tmppath)
       'waitkey(MENUKEY_CONFIRM)
       case a.get_type(@tmppath)
@@ -659,7 +660,7 @@ if gotfiles < 0
   msgbox_simple(@"Directory error!!!")
   waitkey(MENUKEY_CONFIRM)
   return
-if c.strncmp(@curdir,@"/sd/",MAX_PATH) ' don't add updir into base dir (true root dir can't be enumerated)
+if c.strncmp(@curdir,@"/",MAX_PATH) ' don't add updir into root dir
   fileenter(@"<go up>",0,gotfiles++)
 sortFiles(gotfiles)
 screen_reset()
@@ -744,20 +745,20 @@ repeat
   if keys & MENUKEY_BACK
     repeat while poll_menukeys() & MENUKEY_BACK
     tmppath[0] := 0
-    return
+    return false
   elseif keys & MENUKEY_CONFIRM and gotfiles
     repeat while poll_menukeys() & MENUKEY_CONFIRM
     c.strncpy(@tmppath,@curdir,MAX_PATH-12)
     if byte[MKRAM_BASE+selection*12]==0 ' got directory up?
       tmp := @tmppath+strsize(@tmppath)
       tmp2 := 2
-      repeat while tmp > @tmppath and tmp2
+      repeat while tmp >= @tmppath and tmp2
         if byte[tmp] == "/"
           tmp2--
         byte[tmp--] := 0
     else
       filegetname(@tmppath+strsize(@tmppath),selection)
-    return
+    return true
   else
     tmp := selection
     selection := handle_menu_move(keys,selection,gotfiles-1,DIRLIST_HEIGHT)
@@ -796,8 +797,8 @@ PRI handle_menu_move(keys,current,max,pagelen) : r | tmp
 PRI scandir() : got | dir,tmp,type
 
 c.strncpy(@tmppath,@curdir,MAX_PATH)
-if c.strncmp(@curdir,@"/sd/",MAX_PATH) ' if not root, remove slash for opening directory (WTF??)
-  tmppath[strsize(@tmppath)-1] := 0
+'if c.strncmp(@curdir,@"/sd/",MAX_PATH) ' if not root, remove slash for opening directory (WTF??)
+'  tmppath[strsize(@tmppath)-1] := 0
 
 dir := c.opendir(@tmppath)
 ifnot dir
