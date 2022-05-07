@@ -1,11 +1,15 @@
 OBJ vconst = "MegaVGA.spin2"
 CON
 
+''  TODO. Leave this alone
 SHOW_MENU = true
 
 '' if ROM supports both overseas 60Hz (USA) or domestic 60Hz (Japan) regions, this decides which one to use.
 '' (50Hz overseas is always the third choice)
-PREFER_OVERSEAS = true 
+PREFER_OVERSEAS = true
+
+'' Wether the second control port should have a pad connected.
+HAVE_PLAYER2 = true
 
 ' Enable one of these to select the exmem type to use
 #define USE_PSRAM16
@@ -30,17 +34,6 @@ HYPER_RESET  = 15+HYPER_ACCESSORY
 
 HYPER_WAIT  = 28
 HYPER_DELAY = 1
-
-
-'' Ignore stuff below
-
-#ifdef USE_PSRAM4
-#define USE_PSRAM_EITHER
-#endif
-#ifdef USE_PSRAM16
-#define USE_PSRAM_EITHER
-#endif
-
 
 
 '{
@@ -77,3 +70,13 @@ ENABLE_PIN   = 1              ' USB object enables port voltage protection
 DM_PIN       = 2              ' Add to BASEPIN
 
 
+
+
+'' Ignore stuff below
+
+#ifdef USE_PSRAM4
+#define USE_PSRAM_EITHER
+#endif
+#ifdef USE_PSRAM16
+#define USE_PSRAM_EITHER
+#endif

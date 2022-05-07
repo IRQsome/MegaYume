@@ -168,7 +168,7 @@ repeat
       byte[$E1].[6 addbits 1] := detect_region()
       tmp := detect_6button_issue() ? PAD_3BUTTON : PAD_6BUTTON
       byte[$47] := tmp
-      byte[$4B] := tmp
+      byte[$4B] := HAVE_PLAYER2 ? tmp : PAD_NONE
 
       ' remove extension from tmppath
       tmp := strsize(@tmppath)
