@@ -11,7 +11,7 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
-MY_VERSION = 02
+MY_VERSION = 03
 '' Note: this sucks. not as much.
 '' Perhaps more important note: use the included build.sh.
 
@@ -424,10 +424,9 @@ repeat
   settiles(MENU_PLANEA,7,7+x,14,14,258+ATTR_PAL2<<11)
   settiles(MENU_PLANEA,7+x+1,7+26,14,14," "+ATTR_PAL2<<11)
   rom_read_block(MKRAM_BASE+tmp&$4000)
-  if tmp
-    exmem_write(tmp-$4000,MKRAM_BASE+((tmp-$4000)&$4000),$4000,true)
+  exmem_write(tmp,MKRAM_BASE+tmp&$4000,$4000,true)
 while (tmp+=$4000)<romsize
-exmem_write(tmp-$4000,MKRAM_BASE+((tmp-$4000)&$4000),$4000,false)
+exmem_sync()
 
 PRI rom_read_block(dest) | i,j,tmp1,tmp2
 '' Read a 16K block of ROM data
