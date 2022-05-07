@@ -28,14 +28,6 @@ REGION_DOMESTIC_60HZ = %00 '' Japan
 REGION_OVERSEAS_50HZ = %11 '' Europe, Australia
 REGION_DOMESTIC_50HZ = %01 '' Narnia, Gensokyo, Oz, Bielefeld
 
-
-'' Controller types
-'' 6-button is usually what you want,
-'' but some games only work with 3-button
-PLAYER1_PAD = PAD_6BUTTON
-PLAYER2_PAD = PAD_6BUTTON
-
-
 #0,PAD_NONE,PAD_3BUTTON,PAD_6BUTTON
 
 CON ' Common constants
@@ -85,11 +77,11 @@ io_pl2_padw   word 0 ' < $42 (populated by upper code)
 io_pl1_dir    byte 0
 io_pl1_out    byte 0
 io_pl1_state  byte 0
-io_pl1_type   byte PLAYER1_PAD
+io_pl1_type   byte PAD_6BUTTON ' < $47 (populated by upper code)
 io_pl2_dir    byte 0
 io_pl2_out    byte 0
 io_pl2_state  byte 0
-io_pl2_type   byte PLAYER2_PAD
+io_pl2_type   byte PAD_6BUTTON ' < $4B (populated by upper code)
 
 io_6btn_timeout long 0 ' Timeout for 6 button state machine
 

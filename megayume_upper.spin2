@@ -166,6 +166,9 @@ repeat
       do_load_rom()
 
       byte[$E1].[6 addbits 1] := detect_region()
+      tmp := detect_6button_issue() ? PAD_3BUTTON : PAD_6BUTTON
+      byte[$47] := tmp
+      byte[$4B] := tmp
 
       ' remove extension from tmppath
       tmp := strsize(@tmppath)
@@ -411,13 +414,31 @@ if got.[REGION_OVERSEAS_50HZ]
 
 return REGION_DOMESTIC_50HZ ' The nameless land named OHA...
 
+PRI detect_6button_issue() : got_issue | ptr,serial
+' detect games that don't work with 6 button pads by comparing serial numbers
+serial := __builtin_alloca(16)
+exmem_read(serial,$180,16,false)
+ptr := @sixbutton_issue_serials
+repeat (@sixbutton_issue_serials_end-@sixbutton_issue_serials)/14
+  ifnot c.memcmp(serial,ptr,14)
+    return true
+  ptr+=14
+return false
 
+DAT
+'' Oddly, not all of the games that are listed online as being 6-button-incompatible
+'' actually misbehave in emulation. Perhaps my 6 button state machine is more robust?
+sixbutton_issue_serials
+byte "GM T-48036 -00" ' Ms. Pacman
+byte "GM T-95026-00 " ' Sunset Riders
+byte "GM MK-1210 -00" ' Mario Lemieux Hockey
+sixbutton_issue_serials_end
 
 PRI do_load_rom() | tmp,x
 
 msgbox_simple(@"Loading ROM...")
 byte[$E0] := encod(romsize-1) ' Set rom size limit for lower code
-exmem_fill(0,0,8*1024*1024,true) ' Fill entire memory with zeroes
+exmem_fill(0,0,EXRAM_MAX,true) ' Fill entire memory with zeroes
 tmp:=0
 repeat
   x := (tmp*26)/romsize
@@ -563,6 +584,7 @@ ZINT_LOCK = 10 ' Z80 VBlank IRQ is sorta independent
 
 STATIC_LOCKS = decod ROM_LOCK | decod HINT_LOCK | decod VINT_LOCK | decod ZINT_LOCK
 
+#0,PAD_NONE,PAD_3BUTTON,PAD_6BUTTON
 
 REGION_OVERSEAS_60HZ = %10 '' Americas
 REGION_DOMESTIC_60HZ = %00 '' Japan
