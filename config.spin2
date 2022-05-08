@@ -11,6 +11,9 @@ PREFER_OVERSEAS = true
 '' Wether the second control port should have a pad connected.
 HAVE_PLAYER2 = true
 
+'' Wether holding Down+Start or Up+Start should quit/reset
+INBAND_RESET = true
+
 ' Enable one of these to select the exmem type to use
 #define USE_PSRAM16
 '#define USE_PSRAM4

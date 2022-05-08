@@ -11,7 +11,7 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
-MY_VERSION = 03
+MY_VERSION = 04
 '' Note: this sucks. not as much.
 '' Perhaps more important note: use the included build.sh.
 
@@ -86,35 +86,6 @@ coginit(COGEXEC_NEW,long[$24],0)
 coginit(COGEXEC_NEW,long[$28],0)
 
 usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
-
-
-' Keyboard to gamepad map
-usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
-usb.setEmuPadMapping( 1,usb.KEY_DOWN)           ' Down
-usb.setEmuPadMapping( 2,usb.KEY_LEFT)           ' Left
-usb.setEmuPadMapping( 3,usb.KEY_RIGHT)          ' Right
-usb.setEmuPadMapping( 4,usb.KEY_C)              ' B
-usb.setEmuPadMapping( 5,usb.KEY_V)              ' C
-usb.setEmuPadMapping( 6,usb.KEY_X)              ' A
-usb.setEmuPadMapping( 7,usb.KEY_ENTER)          ' START
-usb.setEmuPadMapping( 8,usb.KEY_F)              ' Z
-usb.setEmuPadMapping( 9,usb.KEY_D)              ' Y
-usb.setEmuPadMapping(10,usb.KEY_S)              ' X
-usb.setEmuPadMapping(11,usb.KEY_A)              ' MODE
-  ' TODO: Figure something out for player 2
-' Keyboard to gamepad map
-usb.setEmuPadMapping(16,usb.KEY_KP5)            ' Up
-usb.setEmuPadMapping(17,usb.KEY_KP2DWN)         ' Down
-usb.setEmuPadMapping(18,usb.KEY_KP1END)         ' Left
-usb.setEmuPadMapping(19,usb.KEY_KP3PGD)         ' Right
-usb.setEmuPadMapping(20,usb.KEY_Comma)          ' B
-usb.setEmuPadMapping(21,usb.KEY_Dot)            ' C
-usb.setEmuPadMapping(22,usb.KEY_M)              ' A
-usb.setEmuPadMapping(23,usb.KEY_KPEnter)        ' START
-usb.setEmuPadMapping(24,usb.KEY_L)              ' Z
-usb.setEmuPadMapping(25,usb.KEY_K)              ' Y
-usb.setEmuPadMapping(26,usb.KEY_J)              ' X
-usb.setEmuPadMapping(27,usb.KEY_H)              ' MODE
 
   
 menu_vdp_init()
@@ -197,7 +168,7 @@ repeat
 
 
 
-PRI run_emulator() | tmp,did_reset,did_pause,should_pause
+PRI run_emulator() | tmp,did_reset,did_pause,should_pause,inband_time,inband_which,inband_trig
 
 did_pause := did_reset := should_pause := 0
 
@@ -205,14 +176,61 @@ exmem_stop()
 bytefill(MKRAM_BASE,0,$1_0000)
 bytefill(VRAM_BASE,0,$1_0000)
 
+' Keyboard to gamepad map
+usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
+usb.setEmuPadMapping( 1,usb.KEY_DOWN)           ' Down
+usb.setEmuPadMapping( 2,usb.KEY_LEFT)           ' Left
+usb.setEmuPadMapping( 3,usb.KEY_RIGHT)          ' Right
+usb.setEmuPadMapping( 4,usb.KEY_C)              ' B
+usb.setEmuPadMapping( 5,usb.KEY_V)              ' C
+usb.setEmuPadMapping( 6,usb.KEY_X)              ' A
+usb.setEmuPadMapping( 7,usb.KEY_ENTER)          ' START
+usb.setEmuPadMapping( 8,usb.KEY_F)              ' Z
+usb.setEmuPadMapping( 9,usb.KEY_D)              ' Y
+usb.setEmuPadMapping(10,usb.KEY_S)              ' X
+usb.setEmuPadMapping(11,usb.KEY_A)              ' MODE
+  ' TODO: Figure something out for player 2
+' Keyboard to gamepad map
+usb.setEmuPadMapping(16,usb.KEY_KP5)            ' Up
+usb.setEmuPadMapping(17,usb.KEY_KP2DWN)         ' Down
+usb.setEmuPadMapping(18,usb.KEY_KP1END)         ' Left
+usb.setEmuPadMapping(19,usb.KEY_KP3PGD)         ' Right
+usb.setEmuPadMapping(20,usb.KEY_Comma)          ' B
+usb.setEmuPadMapping(21,usb.KEY_Dot)            ' C
+usb.setEmuPadMapping(22,usb.KEY_M)              ' A
+usb.setEmuPadMapping(23,usb.KEY_KPEnter)        ' START
+usb.setEmuPadMapping(24,usb.KEY_L)              ' Z
+usb.setEmuPadMapping(25,usb.KEY_K)              ' Y
+usb.setEmuPadMapping(26,usb.KEY_J)              ' X
+usb.setEmuPadMapping(27,usb.KEY_H)              ' MODE
+
 ' setup Z80
 z80_cog := coginit(HUBEXEC_NEW,long[$2C],0)
 ' setup 68000
 cpu_cog := coginit(HUBEXEC_NEW,long[$1C],0)
 
-repeat
+inband_which := 0
 
-  tmp:=usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_R)
+repeat
+  if INBAND_RESET
+    tmp := long[$40]
+    if tmp.[0] and tmp.[7] ' Up+Start
+      if inband_which <> 1
+        inband_which:=1
+        inband_time := getct()
+    elseif tmp.[1] and tmp.[7] ' Down+Start
+      if inband_which <> 2
+        inband_which:=2
+        inband_time := getct()
+    else
+      inband_which:=0
+
+  if inband_which<>0 and (getct()-inband_time) > (3*clkfreq)
+    inband_trig := inband_which\0
+  else
+    inband_trig := 0
+
+  tmp:=(usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_R)) or inband_trig == 1
   if tmp and not did_reset
     byte[$E2] := 255
     cogatn(decod cpu_cog)
@@ -227,7 +245,7 @@ repeat
       cogatn(decod cpu_cog)
     should_pause := false
 
-  if usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_Esc)
+  if (usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_Esc)) or inband_trig == 2
     quit
 
   ' Autosave SRAM if last write was 3 seconds ago
@@ -245,16 +263,21 @@ cogstop(tmp)
 
 lockrel(ROM_LOCK)
 
+repeat tmp from 0 to 31
+  usb.setEmuPadMapping(tmp,0)
 
-PRI poll_menukeys() : keys
 
-if usb.keystate(usb.KEY_UP)
+PRI poll_menukeys() : keys | pad
+
+pad := long[$40]
+
+if usb.keystate(usb.KEY_UP) or pad.[0]
   keys |= MENUKEY_UP
-if usb.keystate(usb.KEY_DOWN)
+if usb.keystate(usb.KEY_DOWN) or pad.[1]
   keys |= MENUKEY_DOWN
-if usb.keystate(usb.KEY_LEFT)
+if usb.keystate(usb.KEY_LEFT) or pad.[2]
   keys |= MENUKEY_LEFT
-if usb.keystate(usb.KEY_RIGHT)
+if usb.keystate(usb.KEY_RIGHT) or pad.[3]
   keys |= MENUKEY_RIGHT
 
 if usb.keystate(usb.KEY_PAGEUP)
@@ -262,9 +285,9 @@ if usb.keystate(usb.KEY_PAGEUP)
 if usb.keystate(usb.KEY_PAGEDWN)
   keys |= MENUKEY_PGDOWN
 
-if usb.keystate(usb.KEY_Enter)
+if usb.keystate(usb.KEY_Enter) or pad.[7] or pad.[5]
   keys |= MENUKEY_CONFIRM
-if usb.keystate(usb.KEY_Esc) or usb.keystate(usb.KEY_Bkspace)
+if usb.keystate(usb.KEY_Esc) or usb.keystate(usb.KEY_Bkspace) or pad.[6]
   keys |= MENUKEY_BACK
 
 
@@ -622,6 +645,9 @@ repeat while byte[ptr]<>127
   ptr += strsize(ptr)+1
   vram += 32*8*4
 
+'repeat until poll_menukeys() & MENUKEY_CONFIRM
+'  repeat y from 0 to 31
+'    word[VRAM_BASE+MENU_PLANEA][64*24+4+y] := long[$40].[y] ? "O" : "_"
 waitkey(MENUKEY_CONFIRM)
 
 DAT ' credits/info text
