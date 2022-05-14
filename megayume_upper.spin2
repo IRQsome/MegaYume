@@ -663,9 +663,10 @@ byte " Programmed by Ada Gottenstraeter / アダ・ゴテンスツレテル",0
 byte "    of ＩＲＱｓｏｍｅ　Ｓｏｆｔｗａｒｅ non-incorporated",0
 byte "",0
 byte " Additional programming:",0
-byte "   Johannes Ahlebrand - original PSG code",0
-byte "           Eric Smith - flexspin compiler",0
-byte "            Roger Loh - external memory drivers",0
+byte "                Johannes Ahlebrand - original PSG code",0
+byte "                        Eric Smith - flexspin compiler",0
+byte "                         Roger Loh - external memory drivers",0
+byte "   Garry Jordan & Marco Maccaferri - USB driver",0
 byte "",0
 byte " UI fonts used: ｢Misaki Gothic 2nd｣ and ｢funscii｣",0
 byte "",0
