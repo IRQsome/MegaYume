@@ -3070,6 +3070,8 @@ hget_gp_in_report
                 rdlong  htmp,ptra
                 cmp     htmp,##$0011_0079 wz
         if_z    jmp #.retrobit
+                cmp     htmp,##$1112_0E6F wz
+        if_z    jmp #.neogeo
 
                 ' No good
                 jmp #.data_out
@@ -3116,6 +3118,26 @@ hget_gp_in_report
         if_11   bith pad_tmp,#1
         if_00   bith pad_tmp,#0
                 
+                jmp #.data_out
+
+.neogeo
+                rdbyte retval,ptrb[2]
+                call #hat_to_rldu
+                setnib pad_tmp,retval,#0
+
+                rdword retval,ptrb[0]
+
+                testb retval,#2 wc ' A -> A
+                bitc pad_tmp,#6
+                testb retval,#1 wc ' B -> B
+                bitc pad_tmp,#4
+                testb retval,#3 wc ' C/D -> C
+                testb retval,#0 orc 
+                bitc pad_tmp,#5
+                testb retval,#8 wc ' Select
+                testb retval,#9 wc ' Start
+                bitc pad_tmp,#7
+
                 jmp #.data_out
 
 .xinput         
@@ -3202,6 +3224,22 @@ hget_gp_in_report
 
         if_nz   wxpin   #GP_DATA, usb_event_pin         ' Notify data update
                 ret
+
+
+hat_to_rldu
+                and retval,#15
+                fle retval,#8
+                jmprel retval
+        _ret_   mov retval,#%0001
+        _ret_   mov retval,#%1001
+        _ret_   mov retval,#%1000
+        _ret_   mov retval,#%1010
+        _ret_   mov retval,#%0010
+        _ret_   mov retval,#%0110
+        _ret_   mov retval,#%0100
+        _ret_   mov retval,#%0101
+        _ret_   mov retval,#%0000
+
 ' */
 ' #endregion (USB hub execution)
 ' #region Partially populated SETUP packets
