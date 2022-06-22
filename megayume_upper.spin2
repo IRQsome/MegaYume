@@ -11,7 +11,7 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
-MY_VERSION = 04
+MY_VERSION = 05
 '' Note: this sucks. not as much.
 '' Perhaps more important note: use the included build.sh.
 
