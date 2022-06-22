@@ -67,8 +67,8 @@ AUDIO_LEFT  = 24+6
 AUDIO_RIGHT = AUDIO_LEFT + 1
 
 '' Uncomment ONLY ONE of the below
-'#define INPUT_USE_USB
-#define INPUT_USE_PINS
+#define INPUT_USE_USB
+'#define INPUT_USE_PINS
 
 
 '' USB Keyboard/gamepad pins.
