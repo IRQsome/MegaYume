@@ -66,12 +66,50 @@ VGA_VSYNC   = 0
 AUDIO_LEFT  = 24+6
 AUDIO_RIGHT = AUDIO_LEFT + 1
 
-'' USB Keyboard/mouse.
+'' Uncomment ONLY ONE of the below
+'#define INPUT_USE_USB
+#define INPUT_USE_PINS
+
+
+'' USB Keyboard/gamepad pins.
 USB0_BASEPIN = 16             ' USB port0/port1 pin block
 NEXT_BASEPIN = 4              ' Add to BASEPIN for next USB port pin
 ENABLE_PIN   = 1              ' USB object enables port voltage protection
 DM_PIN       = 2              ' Add to BASEPIN
 
+
+'' Discrete pin inputs
+' For active-low buttons: P_HIGH_15K | P_LOW_15K | P_INVERT_A
+' For active-high buttons: P_HIGH_15K | P_LOW_15K | P_INVERT_OUTPUT
+PINPUT_PINMODE = P_HIGH_15K | P_LOW_15K | P_INVERT_OUTPUT
+PINPUT_DRIVE = true
+
+' Set -1 if button not present
+PINPUT_P1_UP     = 12
+PINPUT_P1_DOWN   = 13
+PINPUT_P1_LEFT   = 14
+PINPUT_P1_RIGHT  = 15
+PINPUT_P1_A      = 6
+PINPUT_P1_B      = 7
+PINPUT_P1_C      = 5
+PINPUT_P1_START  = 4
+PINPUT_P1_X      = -1
+PINPUT_P1_Y      = -1
+PINPUT_P1_Z      = -1
+PINPUT_P1_MODE   = -1
+
+PINPUT_P2_UP     = -1
+PINPUT_P2_DOWN   = -1
+PINPUT_P2_LEFT   = -1
+PINPUT_P2_RIGHT  = -1
+PINPUT_P2_A      = -1
+PINPUT_P2_B      = -1
+PINPUT_P2_C      = -1
+PINPUT_P2_START  = -1
+PINPUT_P2_X      = -1
+PINPUT_P2_Y      = -1
+PINPUT_P2_Z      = -1
+PINPUT_P2_MODE   = -1
 
 
 

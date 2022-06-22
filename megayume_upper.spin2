@@ -57,6 +57,11 @@ byte cpu_cog,z80_cog,exmem_cog
 alignl
 byte curdir[MAX_PATH+1],tmppath[MAX_PATH+1]
 
+#ifdef INPUT_USE_PINS
+alignl
+long pinput_stack[32]
+#endif
+
 PUB main() | tmp, x, mirrors, tmp2
 
 org
@@ -87,7 +92,11 @@ coginit(HUBEXEC_NEW,long[$30],0)
 coginit(COGEXEC_NEW,long[$24],0)
 coginit(COGEXEC_NEW,long[$28],0)
 
+#ifdef INPUT_USE_USB
 usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
+#elseifdef INPUT_USE_PINS
+cogspin(NEWCOG,pinput_cog(),@pinput_stack)
+#endif
 
   
 menu_vdp_init()
@@ -181,6 +190,7 @@ exmem_stop()
 bytefill(MKRAM_BASE,0,$1_0000)
 bytefill(VRAM_BASE,0,$1_0000)
 
+#ifdef INPUT_USE_USB
 ' Keyboard to gamepad map
 usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
 usb.setEmuPadMapping( 1,usb.KEY_DOWN)           ' Down
@@ -208,6 +218,7 @@ usb.setEmuPadMapping(24,usb.KEY_L)              ' Z
 usb.setEmuPadMapping(25,usb.KEY_K)              ' Y
 usb.setEmuPadMapping(26,usb.KEY_J)              ' X
 usb.setEmuPadMapping(27,usb.KEY_H)              ' MODE
+#endif
 
 ' setup Z80
 z80_cog := coginit(HUBEXEC_NEW,long[$2C],0)
@@ -270,8 +281,10 @@ cogstop(tmp)
 
 lockrel(ROM_LOCK)
 
+#ifdef INPUT_USE_USB
 repeat tmp from 0 to 31
   usb.setEmuPadMapping(tmp,0)
+#endif
 
 
 PRI poll_menukeys() : keys | pad
@@ -1186,19 +1199,37 @@ case first := byte[ptr]
 
   0: return -1
   other: return 1 ' silently consume unknown byte
-{
-PRI ram_readburst(exaddr,hubaddr,longs)
-#ifdef USE_PSRAM16
-#error "NYI"
-#elseifdef USE_PSRAM4
-#error "NYI"
-#elseifdef USE_HYPER
-#error "NYI"
-#else
-  longmove(hubaddr,$4_0000+exaddr,longs)
+
+#ifdef INPUT_USE_PINS
+PRI pinput_cog() | i,p,data
+
+repeat i from 0 to 31
+  if (p:=pin_table[i]) +< 64
+    wrpin(p,PINPUT_PINMODE)
+    pinh(p)
+
+repeat
+  data := 0
+  repeat i from 0 to 31
+    if (p:=pin_table[i]) +< 64
+      data.[i] := pinr(p)
+      'pinw(p-4,data.[i])
+  long[$40] := data
+
 #endif
-}
 DAT
+
+#ifdef INPUT_USE_PINS
+pin_table byte
+byte PINPUT_P1_UP,PINPUT_P1_DOWN,PINPUT_P1_LEFT,PINPUT_P1_RIGHT
+byte PINPUT_P1_B,PINPUT_P1_C,PINPUT_P1_A,PINPUT_P1_START
+byte PINPUT_P1_Z,PINPUT_P1_Y,PINPUT_P1_X,PINPUT_P1_MODE
+byte -1[4]
+byte PINPUT_P2_UP,PINPUT_P2_DOWN,PINPUT_P2_LEFT,PINPUT_P2_RIGHT
+byte PINPUT_P2_B,PINPUT_P2_C,PINPUT_P2_A,PINPUT_P2_START
+byte PINPUT_P2_Z,PINPUT_P2_Y,PINPUT_P2_X,PINPUT_P2_MODE
+byte -1[4]
+#endif
 
 jis_font file "MISAKI8W.DAT"
 narrow_font file "MISAKI4W.DAT"
