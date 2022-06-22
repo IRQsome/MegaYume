@@ -91,8 +91,9 @@ usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40
 
   
 menu_vdp_init()
-if SHOW_MENU
-  do_opening()
+#ifndef DIRECT_BOOT
+do_opening()
+#endif
 msgbox_simple(@"Mounting storage...")
 _mount(@"/sd",c._vfs_open_sdcard())
 'clearplane(MENU_PLANEA)
@@ -105,66 +106,68 @@ else
 
 repeat
 
-  if SHOW_MENU
-    menu_vdp_init()
-
-    repeat
-      ifnot do_filechooser()
-        next
-      'msgbox_simple(@tmppath)
-      'waitkey(MENUKEY_CONFIRM)
-      case a.get_type(@tmppath)
-        0:
-          msgbox_simple(@"WTF?")
-          waitkey(MENUKEY_CONFIRM)
-          next
-        1:
-          c.strncpy(@curdir,@tmppath,MAX_PATH)
-          c.strncat(@curdir,@"/",MAX_PATH)
-          next ' go for another round
-        2:
-          'msgbox_simple(@"ROM ok?")
-          'waitkey(MENUKEY_CONFIRM)
-
-
-      if open_romfile(@tmppath) < 0
-        msgbox_simple(@"open error")
+  menu_vdp_init()
+  repeat
+#ifdef DIRECT_BOOT
+    c.strncpy(@tmppath,@DIRECT_BOOT,MAX_PATH)
+#else
+    ifnot do_filechooser()
+      next
+#endif
+    'msgbox_simple(@tmppath)
+    'waitkey(MENUKEY_CONFIRM)
+    case a.get_type(@tmppath)
+      0:
+        msgbox_simple(@"WTF?")
         waitkey(MENUKEY_CONFIRM)
         next
-      'c.sprintf(@tmppath,@"Rom size: %d",romsize)
-      'msgbox_simple(@tmppath)
-      'waitkey(MENUKEY_CONFIRM)
-      settile(MENU_PLANEA,0,0,"X"+ATTR_PAL2<<11)
-      exmem_start()
-      settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
-      do_load_rom()
+      1:
+        c.strncpy(@curdir,@tmppath,MAX_PATH)
+        c.strncat(@curdir,@"/",MAX_PATH)
+        next ' go for another round
+      2:
+        'msgbox_simple(@"ROM ok?")
+        'waitkey(MENUKEY_CONFIRM)
 
-      byte[$E1].[6 addbits 1] := detect_region()
-      tmp := detect_6button_issue() ? PAD_3BUTTON : PAD_6BUTTON
-      byte[$47] := tmp
-      byte[$4B] := HAVE_PLAYER2 ? tmp : PAD_NONE
 
-      ' remove extension from tmppath
-      tmp := strsize(@tmppath)
-      repeat while --tmp >= 0
-        case tmppath[tmp]
-          ".":
-            tmppath[tmp] := 0
-            quit
-          "/": quit
-      ' add SRM extnesion
-      c.strncat(@tmppath,@".SRM",MAX_PATH)
+    if open_romfile(@tmppath) < 0
+      msgbox_simple(@"open error")
+      waitkey(MENUKEY_CONFIRM)
+      next
+    'c.sprintf(@tmppath,@"Rom size: %d",romsize)
+    'msgbox_simple(@tmppath)
+    'waitkey(MENUKEY_CONFIRM)
+    settile(MENU_PLANEA,0,0,"X"+ATTR_PAL2<<11)
+    exmem_start()
+    settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
+    do_load_rom()
 
-      init_sram(@tmppath)
-      bytefill(MKRAM_BASE,0,$10000)
+    byte[$E1].[6 addbits 1] := detect_region()
+    tmp := detect_6button_issue() ? PAD_3BUTTON : PAD_6BUTTON
+    byte[$47] := tmp
+    byte[$4B] := HAVE_PLAYER2 ? tmp : PAD_NONE
 
-      settile(MENU_PLANEA,0,0,"2"+ATTR_PAL2<<11)
-      quit
+    ' remove extension from tmppath
+    tmp := strsize(@tmppath)
+    repeat while --tmp >= 0
+      case tmppath[tmp]
+        ".":
+          tmppath[tmp] := 0
+          quit
+        "/": quit
+    ' add SRM extnesion
+    c.strncat(@tmppath,@".SRM",MAX_PATH)
 
-    run_emulator()
-    if srmfile
-      flush_sram()
-      c.fclose(srmfile\0)
+    init_sram(@tmppath)
+    bytefill(MKRAM_BASE,0,$10000)
+
+    settile(MENU_PLANEA,0,0,"2"+ATTR_PAL2<<11)
+    quit
+
+  run_emulator()
+  if srmfile
+    flush_sram()
+    c.fclose(srmfile\0)
 
 
 
@@ -216,14 +219,16 @@ inband_which := 0
 repeat
   if INBAND_RESET
     tmp := long[$40]
-    if tmp.[0] and tmp.[7] ' Up+Start
+    if tmp.[0] and tmp.[7] ' Up+Start (Reset)
       if inband_which <> 1
         inband_which:=1
         inband_time := getct()
-    elseif tmp.[1] and tmp.[7] ' Down+Start
+#ifndef DIRECT_BOOT
+    elseif tmp.[1] and tmp.[7] ' Down+Start (Quit)
       if inband_which <> 2
         inband_which:=2
         inband_time := getct()
+#endif
     else
       inband_which:=0
 

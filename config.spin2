@@ -1,8 +1,8 @@
 OBJ vconst = "MegaVGA.spin2"
 CON
 
-''  TODO. Leave this alone
-SHOW_MENU = true
+'' This can be defined to skip game selection
+'#define DIRECT_BOOT "/sd/MEGAYUME/SONIC2.BIN"
 
 '' if ROM supports both overseas 60Hz (USA) or domestic 60Hz (Japan) regions, this decides which one to use.
 '' (50Hz overseas is always the third choice)
@@ -39,7 +39,7 @@ HYPER_WAIT  = 28
 HYPER_DELAY = 1
 
 
-'{
+{
 VIDEO_MODE = vconst.MODE_VGA3X
 VIDEO_SUBMODE = vconst.SUBMODE_NTSC
 
@@ -48,8 +48,8 @@ VGA_VSYNC   = VGA_BASEPIN + 4
 
 
 '}
-{
-VIDEO_MODE = vconst.MODE_SVID_AND_COMP
+'{
+VIDEO_MODE = vconst.MODE_YPBPR
 VIDEO_SUBMODE = vconst.SUBMODE_NTSC
 
 VGA_BASEPIN = 24
