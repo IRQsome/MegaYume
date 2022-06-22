@@ -21,7 +21,7 @@ Features include:
   - Pretty decent FM sound
   - 6 button controller support
   - SRAM save support
-  - Video output over VGA, HDMI, S-video or Composite
+  - Video output over VGA, HDMI, YPbPr, S-video or Composite
   - USB Keyboard input (somewhat easy to hack in other devices)
   - Buuuuggggssss!!
 

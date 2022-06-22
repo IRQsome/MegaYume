@@ -1874,7 +1874,7 @@ mk_address_error_debug
 mk_address_error ' can basically only happen due to misalignment?
               debug("something something address error ",uhex_long(mk_effaddr),uhex_long(mk_virtualpc),uhex_long(mk_optmp0))
               debug(uhex_long(mk_a0))
-              jmp #$
+              'jmp #$
               ' get vector
               rdlong mk_branchdisplace,##mk_vectorcache+$0C
               sub mk_branchdisplace,mk_virtualpc

@@ -25,6 +25,8 @@ DIRENT_MAX = 4000
 
 EXRAM_MAX = 8*1024*1024
 
+HEAPSIZE = 1024*6
+
 OBJ
 
 video : "MegaVGA"
@@ -285,9 +287,9 @@ if usb.keystate(usb.KEY_PAGEUP)
 if usb.keystate(usb.KEY_PAGEDWN)
   keys |= MENUKEY_PGDOWN
 
-if usb.keystate(usb.KEY_Enter) or pad.[7] or pad.[5]
+if usb.keystate(usb.KEY_Enter) or pad.[7] or pad.[5] or pad.[6]
   keys |= MENUKEY_CONFIRM
-if usb.keystate(usb.KEY_Esc) or usb.keystate(usb.KEY_Bkspace) or pad.[6]
+if usb.keystate(usb.KEY_Esc) or usb.keystate(usb.KEY_Bkspace) or pad.[4]
   keys |= MENUKEY_BACK
 
 
