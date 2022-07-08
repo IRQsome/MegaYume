@@ -2161,15 +2161,12 @@ mk_hub_movem  ' MOVEM
 .readloop
 
               testb mk_opword,#6 wc ' long/word ?
-              testb mk_optmp2,#3 wz ' Z -> A register, NZ -> D register
         if_c  call #mk_setup_ea32
         if_nc call #mk_setup_ea16
               call mk_readf
-        if_01 signx mk_memvalue,#15 ' Word size reads to address registers
-    if_not_00 altd mk_optmp2,#mk_d0
-    if_not_00 mov 0-0,mk_memvalue
-        if_00 altd mk_optmp2,#mk_d0
-        if_00 setword 0-0,mk_memvalue,#0
+        if_nc signx mk_memvalue,#15
+              altd mk_optmp2,#mk_d0
+              mov 0-0,mk_memvalue
         if_c  add mk_effaddr,#4
         if_nc add mk_effaddr,#2
 .movem_read
