@@ -4954,6 +4954,7 @@ zk_nextop
               wrbyte #1,#zbus_status ' we're gonna use the bus
 
 zk_irqhook    nop
+zk_nextop_nohook
               {
               cmp zk_pc,##$06B2 wz
         'if_nz cmp zk_pc,##$06EF wz
@@ -5295,23 +5296,22 @@ zk_i2a
 
 
 
-
-zk_irqret     '' RETI/RETN
-              '' These are literally the same
-              testb zk_irqenable,#ZK_IFF2_BIT wc
-              bitc zk_irqenable,#ZK_IFF1_BIT
-              call #\zk_pop16
-        _ret_ mov zk_pc,zk_tmp16
-
-
 zk_imode      ' Don't care, always assume IM1
               ret
 zk_irqoff
               andn zk_irqenable,#(1<<ZK_IFF1_BIT)|(1<<ZK_IFF2_BIT)
         _ret_ mov zk_irqhook,#0
+
+zk_irqret     '' RETI/RETN
+              '' These are literally the same
+              call #\zk_pop16
+              mov zk_pc,zk_tmp16
+              testb zk_irqenable,#ZK_IFF2_BIT wc
+        if_nc ret
 zk_irqon
               or zk_irqenable,#(1<<ZK_IFF1_BIT)|(1<<ZK_IFF2_BIT)
-        _ret_ mov zk_irqhook,##(%1111_1011110_010_000000100<<9)+zk_irqptr ' JSE1 zk_irqptr
+              mov zk_irqhook,##(%1111_1011110_010_000000100<<9)+zk_irqptr ' JSE1 zk_irqptr
+              jmp #zk_nextop_nohook
 
 zk_irqptr     long zk_doirq
 zk_doirq
