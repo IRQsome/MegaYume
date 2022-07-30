@@ -1,15 +1,26 @@
 CON
 
-  #0, MODE_VGA2X, MODE_VGA3X, MODE_VGA4X, MODE_COMPOSITE, MODE_SVIDEO, MODE_SVID_AND_COMP, MODE_HDMI, MODE_YPBPR
+  #0, MODE_VGA2X, MODE_VGA3X, MODE_VGA4X, MODE_COMPOSITE, MODE_SVIDEO, MODE_SVID_AND_COMP, MODE_HDMI, MODE_YPBPR, MODE_LCD6
   #0, SUBMODE_NTSC, SUBMODE_PAL60
 
+  #0, LCD_ILI9342
+
+  ' MADCTL values for ILI submode
+  ILI_HFLIP = %00000100 << 8 ' Doesn't work in bypass mode
+  ILI_VFLIP = %00010000 << 8
+  ILI_BGR   = %00001000 << 8 ' Toggle this if colors are wrong
 
   CONFIG_SIZE = 64 ' TODO: change to actual size
 
 
 
-PUB start(lcptr,emptr,vbptr,mode,basepin,discrete_sync,submode) | i,cogn,modeptr,modebuf[4+CONFIG_SIZE]
+PUB start(lcptr,emptr,vbptr,mode,basepin,discrete_sync,submode) | i,tmp,lcdpins,cogn,modeptr,modebuf[4+CONFIG_SIZE]
 '' Note: discrete_vsync should be -1 for modes that don't need it. In HDMI mode, it indicates reverse mode
+'' In LCD_ILI9342 mode, the four bytes encode various pins:
+''  discrete_sync.byte[0] -> DOTCLK
+''  discrete_sync.byte[1] -> CS (for serial I/F)
+''  discrete_sync.byte[2] -> CLK (for serial I/F)
+''  discrete_sync.byte[3] -> SDA (for serial I/F)
 
 
 case mode
@@ -29,6 +40,8 @@ case mode
     discrete_sync := -1
   MODE_HDMI:
     modeptr := @hdmi_wide_config
+  MODE_LCD6:
+    modeptr := @lcd6_config
   other: abort -1
 
 clkset(computeClockMode(long[modeptr]),long[modeptr])
@@ -40,6 +53,38 @@ case mode
     if discrete_sync&1 ' Reverse mode
       modebuf[46] |= 1<<7 ' CMOD offset !!!!
     discrete_sync:=basepin&%111_000 ' Recycle this long to pass basepin into driver
+  MODE_LCD6:
+    lcdpins := discrete_sync
+    tmp := modebuf[51]' CFRQ offset !!!! (contains clock divider)
+    wrpin(basepin addpins 7,P_SYNC_IO)
+    pinf(lcdpins.byte[0])
+    wrpin(lcdpins.byte[0],P_OE|P_PULSE|P_SYNC_IO)
+    wxpin(lcdpins.byte[0],tmp + (tmp>>1)<<16)
+
+    case submode.byte[0]
+      LCD_ILI9342:
+        pinh(lcdpins.byte[1]) ' CS high
+        pinl(lcdpins.byte[2]) ' CLK low
+        pinf(lcdpins.byte[3]) ' float SDA
+        waitms(5)
+        ili_sendcmd(lcdpins,$01,0,0) ' Sleep out
+        waitms(5)
+        ili_sendcmd(lcdpins,$11,0,0) ' Soft reset
+        waitms(5)
+        ili_sendcmd(lcdpins,$29,0,0) ' Display ON
+        ili_sendcmd(lcdpins,$C8,3,$42_93_FF) ' Set EXTC (magic number?)
+        ili_sendcmd(lcdpins,$36,1,submode.byte[1]) ' Set MADCTL (user supplied)
+        ili_sendcmd(lcdpins,$B0,1,$6C) ' Set IFMODE (RGB, no DE pin, bypass memory, positive sync)
+        ' Pull timings out of mode
+        tmp := modebuf[5] ' VFP
+        tmp.byte[1] := modebuf[6] + modebuf[7] ' VBP
+        tmp.byte[2] := (modebuf[14]&$ffff) ' HFP
+        tmp.byte[3] := (modebuf[16]&$ffff)+(modebuf[18]&$ffff) ' HBP
+        'tmp := $38_05_02_02
+        ili_sendcmd(lcdpins,$B5,4,tmp)
+        ili_sendcmd(lcdpins,$26,1,$04) ' Set gamma to 2.5
+      other: abort -2
+    discrete_sync:=(basepin&%111_000) + (discrete_sync.byte[0]<<8)  ' Recycle this long to pass basepin/dotclk into driver
 
 
 modebuf[0] := vbptr
@@ -72,6 +117,9 @@ case mode
   MODE_HDMI:
     wrpin(basepin addpins 7,P_DAC_124R_3V|P_BITDAC|($FE<<8))
     'wrpin(basepin addpins 7,P_LOW_1K5|P_HIGH_1K5)
+  MODE_LCD6:
+    waitms(1)
+    ili_sendcmd(lcdpins,$F6,3,$07_00_00) ' Set IFCTL (6 bit mode, enable ext. clock)
 
 waitms(1) ' wait for cog to have booted for sure before invalidating stack frame
 
@@ -88,6 +136,48 @@ VDPR_OFFSET = 2 ' lines that rendering has to run ahead
 
 
 DAT
+
+'' LCD 320x240 mode
+lcd6_config
+long 53_693_175*6
+' Timing
+long    1 - 1 ' line multiplier minus one
+long    3 ' native front porch lines
+long    9 ' native sync lines
+long    10 ' native back porch lines
+long    $08000000 ' Sync NCO value
+long    0 ' H40 NCO value
+long    0 ' H32 NCO value
+long    0 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (320*3) ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (25*3), %00 ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (15*3), %01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (67*3), %00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (25*3), %10 ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (15*3), %11 ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + ((67+320)*3), %10 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    negx + (1<<30)' CMOD mode + flags
+long    0 ' CY
+long    0 ' CI
+long    0 ' CQ
+long    0 ' CQ XORlternate value
+long    16 ' dot clock divider
 
 '' HDMI 800x480 mode
 hdmi_wide_config
@@ -399,22 +489,28 @@ entry
               add halflines,#1
               shr halflines,#1
 
-              bitl cmod_val,#31 wcz ' Check pin mode?
+              testb cmod_val,#30 wc ' Have dotclk
+        if_c  getbyte dotclk_pin,discrete_vsync,#1
+
+              testb cmod_val,#31 wc ' Check pin mode?
         if_nc jmp #.dacmode ' no
 
+              getbyte tmp1,discrete_vsync,#0
+
               setq #7
-              drvl discrete_vsync ' Enable pins
+              drvl tmp1 ' Enable pins
 
               ' Patch pins into commands
-              shl discrete_vsync,#17
-              bith discrete_vsync,#encod X_PINS_ON
-              or solid_command,discrete_vsync
-              or pillar_command,discrete_vsync
-              or h40_command,discrete_vsync
-              or h32_command,discrete_vsync
-              or hack_command,discrete_vsync
+              shl tmp1,#17
+              bith tmp1,#encod X_PINS_ON
+              or solid_command,tmp1
+              or pillar_command,tmp1
+              or h40_command,tmp1
+              or h32_command,tmp1
+              or hdmi_command,tmp1
+              or lcd6_command,tmp1
               cmp extra_pillar,#0 wz
-        if_nz or extra_pillar,discrete_vsync
+        if_nz or extra_pillar,tmp1
 
               setd sync_alti,#hsync_sequence_buffer
               rep @.patch_sequences,#8+8
@@ -422,7 +518,7 @@ entry
               alti sync_alti,#%000_100_000
               cmp 0-0,#0 wz
         if_nz alti sync_alti,#%000_100_000
-        if_nz or 0-0,discrete_vsync
+        if_nz or 0-0,tmp1
               add sync_alti,con_402h
 .patch_sequences
 
@@ -438,9 +534,14 @@ entry
 
 
               setxfrq pixelnco_sync
+              cmps dotclk_pin,#0 wc
+        if_ae drvl dotclk_pin
+              xinit solid_command,#0
 
 do_frame
 
+              cmps dotclk_pin,#0 wc
+        if_ae wypin bit31,dotclk_pin
 {
               mov tmp1,##525
 .tstvis
@@ -501,9 +602,10 @@ after_vsync
               neg virtual_line,#6 - VDPR_OFFSET
               mov subline,#0
 
+
               '' do top border
               mov tmp1,#6
-              cmps sync_lines,#0 wc
+              cmps line_multiplier,#1 wc  
               testbn vdp_mode,#1 orc' Interlace display flag
               testb virtual_frame,#0 orc
         if_nc add tmp1,#1
@@ -553,7 +655,7 @@ after_vsync
 
               '' do bottom border
               mov tmp1,#10
-              cmps sync_lines,#0 wc
+              cmps line_multiplier,#1 wc
               testbn vdp_mode,#1 orc' Interlace display flag
               testbn virtual_frame,#0 orc
         if_nc mov subline,line_multiplier
@@ -587,24 +689,49 @@ vislineH32
         _ret_ xcont pillar_command,#0
 
 vislineH40_hdmi
+              testb cmod_val,#30 wc ' LCD?
+        if_c  jmp #.lcd
               rep #3,#320
               rflong pa
               andn pa,#$FF
-              xcont hack_command,pa
+              xcont hdmi_command,pa
+              ret
+
+.lcd
+              rep #4,#320
+              rflong pa
+              and pa,lcdmask
+              shr pa,#8
+              xcont lcd6_command,pa
               ret
 
 vislineH32_hdmi
+              testb cmod_val,#30 wc ' LCD?
+        if_c  jmp #.lcd
               xcont pillar_command,#0
               xcont pillar_command,#0
               rep #3,#256
               rflong pa
               andn pa,#$FF
-              xcont hack_command,pa
+              xcont hdmi_command,pa
               xcont pillar_command,#0
               xcont pillar_command,#0
               ret
 
+.lcd
+              rep #1,#3
+              xcont pillar_command,#0
 
+              rep #4,#256
+              rflong pa
+              and pa,lcdmask
+              shr pa,#8
+              xcont lcd6_command,pa
+
+              rep #1,#3
+              xcont pillar_command,#0
+
+              ret  
 
 
 
@@ -693,10 +820,14 @@ ntsc_vsync
 pillar_command long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 32
 h40_command    long X_DACS_3_2_1_0|X_RFLONG_RGB24 + 320
 h32_command    long X_DACS_3_2_1_0|X_RFLONG_RGB24 + 256
-hack_command   long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 2
+hdmi_command   long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 2
+lcd6_command    long X_DACS_3_2_1_0|X_IMM_4X8_1DAC8 + 3
 con_402h long $402
 con_1280d long 1280
 bit31   long negx
+lcdmask long $FCFCFC00
+
+dotclk_pin long -1
 
 tmp1          res 1
 virtual_line  res 1
@@ -871,3 +1002,22 @@ CON  ' CSC constant calculation
         HDMI_VSYNC  = %0101010100_0101010100_0101010100_10
         HDMI_HVSYNC = %0101010100_0101010100_1010101011_10
 
+PRI ili_sendcmd(pins,cmd,parct,par)
+  pinl(pins.byte[1]) ' CS low
+  ili_sendbyte(pins,cmd,true)
+  repeat parct
+    ili_sendbyte(pins,par,false)
+    par >>= 8
+  pinh(pins.byte[1]) ' CS high
+  pinf(pins.byte[3]) ' float SDA
+
+PRI ili_sendbyte(pins,v,cmdflag)
+  v rev= 8
+  v.[0] := not cmdflag
+  repeat 9
+    pinw(pins.byte[3],v)
+    v>>=1
+    waitus(1)
+    pinh(pins.byte[2])
+    waitus(1)
+    pinl(pins.byte[2]) 
