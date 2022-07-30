@@ -151,6 +151,14 @@ repeat
     settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
     do_load_rom()
 
+    if READBACK_TEST
+      exmem_read(MKRAM_BASE,$100,16,false)
+      byte[MKRAM_BASE+16] := 0
+      msgbox_simple(MKRAM_BASE)
+      waitkey(MENUKEY_CONFIRM)
+    
+
+
     byte[$E1].[6 addbits 1] := detect_region()
     tmp := detect_6button_issue() ? PAD_3BUTTON : PAD_6BUTTON
     byte[$47] := tmp
@@ -529,13 +537,17 @@ if exmem_cog
   return
 
 long[tmp][0] := clkfreq
-long[tmp][1] := 1<<exmem.UNREGCLK_BIT
 #ifdef USE_HYPER
+long[tmp][1] := (HYPER_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
 long[tmp][2] := HYPER_RESET < 32 ? 1<<HYPER_RESET : 0
 long[tmp][3] := HYPER_RESET >= 32 ? 1<<HYPER_RESET : 0
-#else
+#elseifdef USE_PSRAM_EITHER
+long[tmp][1] := (PSRAM_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
 long[tmp][2] := 0
 long[tmp][3] := 0 
+
+if PSRAM_BANKS > 1
+  pinh((PSRAM_SELECT+1) addpins (PSRAM_BANKS-2))
 #endif
 
 #ifdef USE_PSRAM16
@@ -554,13 +566,13 @@ longfill(cogs+4,-1<<16,7)
 longfill(banks,negx,32)
 
 #ifdef USE_PSRAM16
-long[banks][0] := 512<<16 + (PSRAM_DELAY+1)<<13 + 1<<12 + 22
+long[banks][0] := 512<<16 + (PSRAM_DELAY+1)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_PSRAM4
-long[banks][0] := 128<<16 + (PSRAM_DELAY+1)<<13 + 1<<12 + 22
+long[banks][0] := 128<<16 + (PSRAM_DELAY+1)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_HYPER
-long[banks][0] := 128<<16 + (HYPER_DELAY+1)<<13 + 1<<12 + 22
+long[banks][0] := 128<<16 + (HYPER_DELAY+1)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + 6<<25 ' Latency????
 #endif
 

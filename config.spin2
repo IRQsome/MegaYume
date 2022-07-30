@@ -23,9 +23,16 @@ INBAND_RESET = true
 PSRAM_CLK = 56
 PSRAM_SELECT = 57
 PSRAM_BASE = 40
+PSRAM_BANKS = 1 ' Only used to stop further banks from interfering
 
 PSRAM_WAIT  = 10
 PSRAM_DELAY = 3
+PSRAM_SYNC_CLOCK = false
+PSRAM_SYNC_DATA = false
+
+' If true, machine type as read back from external memory
+' Is printed before starting game 
+READBACK_TEST = false
 
 ' For HyperRAM
 HYPER_ACCESSORY = 0 ' Base pin for P2EVAL HyperRAM board
@@ -37,6 +44,8 @@ HYPER_RESET  = 15+HYPER_ACCESSORY
 
 HYPER_WAIT  = 28
 HYPER_DELAY = 1
+HYPER_SYNC_CLOCK = false
+HYPER_SYNC_DATA = false
 
 
 {
@@ -49,8 +58,8 @@ VGA_VSYNC   = VGA_BASEPIN + 4
 
 '}
 '{
-VIDEO_MODE = vconst.MODE_YPBPR
-VIDEO_SUBMODE = vconst.SUBMODE_NTSC
+VIDEO_MODE = vconst.MODE_SVID_AND_COMP
+VIDEO_SUBMODE = vconst.SUBMODE_PAL60
 
 VGA_BASEPIN = 24
 VGA_VSYNC   = 0
@@ -61,6 +70,13 @@ VIDEO_SUBMODE = 0
 
 VGA_BASEPIN = 32
 VGA_VSYNC   = 0
+'}
+
+{
+VIDEO_MODE = vconst.MODE_LCD6
+VIDEO_SUBMODE = vconst.LCD_ILI9342
+VGA_BASEPIN = 0
+VGA_VSYNC = (8<<0) + (9<<8) + (10<<16) + (11<<24)
 '}
 
 AUDIO_LEFT  = 24+6
