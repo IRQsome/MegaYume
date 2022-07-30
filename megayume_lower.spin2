@@ -1950,6 +1950,7 @@ mk_hub_reset
               jmp #$
 
 mk_hub_nop
+              waitx #40 ' make NOP slow - backport from NeoYume
               cmp mk_opword,##$4E71 wz
         if_z  ret
               debug("weird NOP ? ",uhex_word(mk_opword),uhex_long(mk_virtualpc))
@@ -2773,23 +2774,27 @@ mk_init
 
 #ifdef USE_PSRAM_EITHER
               fltl #PSRAM_CLK
-              wrpin ##P_TRANSITION|P_OE, #PSRAM_CLK
+              wrpin ##P_TRANSITION|P_OE|(PSRAM_SYNC_CLOCK ? P_SYNC_IO : P_ASYNC_IO), #PSRAM_CLK
               wxpin #1, #PSRAM_CLK
               drvl #PSRAM_CLK
 
               wrpin ##P_INVERT_OUTPUT,#PSRAM_SELECT
               drvl #PSRAM_SELECT
 
+              wrpin ##(PSRAM_SYNC_DATA ? P_SYNC_IO : P_ASYNC_IO),mk_psram_pinfield
+
               setxfrq mk_nco_slow
               waitx #200
 #endif
 #ifdef USE_HYPER
               fltl #HYPER_CLK
-              wrpin ##P_TRANSITION|P_OE, #HYPER_CLK
+              wrpin ##P_TRANSITION|P_OE|(HYPER_SYNC_CLOCK ? P_SYNC_IO : P_ASYNC_IO), #HYPER_CLK
               wxpin #2, #HYPER_CLK
 
               wrpin ##P_INVERT_OUTPUT,#HYPER_SELECT
               drvl #HYPER_SELECT
+
+              wrpin ##(HYPER_SYNC_DATA ? P_SYNC_IO : P_ASYNC_IO),#HYPER_BASE addpins 7
 
               drvh #HYPER_RESET
 
@@ -4542,8 +4547,15 @@ vdpio_write16
               ' okay, write control port (also begets HV count writes, but those would lock up)
               'debug("cp write ",uhex_word_(mk_memvalue),uhex_long_(mk_virtualpc))
               rdbyte mk_memtmp0,#vdp_iomode_b
+              rdword mk_memtmp2,#vdp_io_address_w
               testb mk_memtmp0,#4 wc
         if_c  jmp #.asetup_2nd
+              
+              ' Address lower bits are updated even if register write
+              setq ##bmask 13
+              muxq mk_memtmp2,mk_memvalue
+              wrword mk_memtmp2,#vdp_io_address_w
+         
               ' why is the control port format so obnoxious???
               testb mk_memvalue,#15 wc
               testb mk_memvalue,#14 wz
@@ -4708,13 +4720,10 @@ vdpio_write16
               mov mk_memtmp0,#$10
               bitz mk_memtmp0,#7 ' we can at least reason about RW from bit 14 (still in Z)
         if_z_and_c bith mk_memtmp0,#1 ' if write and bit 15 set, we know we got CRAM
-              zerox mk_memvalue,#13
-              wrword mk_memvalue,#vdp_io_address_w
               wrbyte mk_memtmp0,#vdp_iomode_b
               ret wcz
 .asetup_2nd
               'debug("asetup_2nd ",uhex_long_array(#vdp_io_address_w,#1),uhex_word(mk_memvalue))
-              rdword mk_memtmp2,#vdp_io_address_w
               rczr mk_memvalue wcz ' TAKE NOTE: bye bye bottom two bits
               bitc mk_memtmp2,#15
               bitz mk_memtmp2,#14
