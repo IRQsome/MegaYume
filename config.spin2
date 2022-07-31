@@ -25,8 +25,8 @@ PSRAM_SELECT = 57
 PSRAM_BASE = 40
 PSRAM_BANKS = 1 ' Only used to stop further banks from interfering
 
-PSRAM_WAIT  = 10
-PSRAM_DELAY = 3
+PSRAM_WAIT  = 5
+PSRAM_DELAY = 13
 PSRAM_SYNC_CLOCK = false
 PSRAM_SYNC_DATA = false
 
