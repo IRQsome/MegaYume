@@ -5288,7 +5288,7 @@ zk_i2a
 
               and zk_accu,#$FF wcz
               bitz zk_flags,#ZK_ZERO_BIT
-              test zk_irqenable,#ZK_IFF2_BIT wc
+              testb zk_irqenable,#ZK_IFF2_BIT wc
               bitc zk_flags,#ZK_OVER_BIT
               andn zk_flags,#(1<<ZK_NMODE_BIT)|(1<<ZK_HALF_BIT)
               setq #ZK_SIGNXYMASK
