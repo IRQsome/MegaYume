@@ -472,9 +472,9 @@ long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64-32,Y_BLANK ' VSync section 8 (back p
 
 ' Color conversion
 long    %0_01_1_010_0 ' CMOD mode + flags
-long    CPB_COMP_SDTV ' CY
+long    CPR_COMP_SDTV ' CY
 long    CY_COMP_SDTV ' CI
-long    CPR_COMP_SDTV ' CQ
+long    CPB_COMP_SDTV ' CQ
 long    0       ' CQ XORlternate value
 long    0 ' CFRQ
 
@@ -990,8 +990,8 @@ CON  ' CSC constant calculation
 
 
     CY_COMP_SDTV  = ( 27&$FF) << 24 + ( 53&$FF) << 16 + ( 10&$FF) << 8 + BLANK_LEVEL
-    CPB_COMP_SDTV = ( 63&$FF) << 24 + (-53&$FF) << 16 + (-10&$FF) << 8 + 128
-    CPR_COMP_SDTV = (-22&$FF) << 24 + (-42&$FF) << 16 + ( 64&$FF) << 8 + 128
+    CPB_COMP_SDTV = (-15&$FF) << 24 + (-30&$FF) << 16 + ( 45&$FF) << 8 + 128
+    CPR_COMP_SDTV = ( 45&$FF) << 24 + (-38&$FF) << 16 + ( -7&$FF) << 8 + 128
 
     Y_BLANK = 0
     Y_SYNC = 256-BLANK_LEVEL
