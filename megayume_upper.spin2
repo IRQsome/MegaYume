@@ -572,7 +572,7 @@ long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 long[banks][0] := 128<<16 + (PSRAM_DELAY-1)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_HYPER
-long[banks][0] := 128<<16 + (HYPER_DELAY-1)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
+long[banks][0] := 128<<16 + (HYPER_DELAY+1)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + 6<<25 ' Latency????
 #endif
 
