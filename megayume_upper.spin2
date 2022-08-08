@@ -566,13 +566,13 @@ longfill(cogs+4,-1<<16,7)
 longfill(banks,negx,32)
 
 #ifdef USE_PSRAM16
-long[banks][0] := 512<<16 + (PSRAM_DELAY-1)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
+long[banks][0] := 512<<16 + (PSRAM_DELAY-9)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_PSRAM4
-long[banks][0] := 128<<16 + (PSRAM_DELAY-1)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
+long[banks][0] := 128<<16 + (PSRAM_DELAY-9)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_HYPER
-long[banks][0] := 128<<16 + (HYPER_DELAY+1)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
+long[banks][0] := 128<<16 + (HYPER_DELAY-7)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + 6<<25 ' Latency????
 #endif
 
