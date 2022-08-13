@@ -21,8 +21,8 @@ Features include:
   - Pretty decent FM sound
   - 6 button controller support
   - SRAM save support
-  - Video output over VGA, HDMI, YPbPr, S-video or Composite
-  - USB Keyboard input (somewhat easy to hack in other devices)
+  - Video output over VGA, HDMI, YPbPr, S-video, Composite or 6bit RGB bus (ILI9342 LCD)
+  - USB input (Keyboard and select gamepads, see below) or direct hookup to discrete switches.
   - Buuuuggggssss!!
 
 See the issues section of this GitHub repository for known issues.
@@ -34,8 +34,7 @@ See the issues section of this GitHub repository for known issues.
 - Make you have flexspin 5.9.10 or newer installed
 
 - Configure memory type, pinouts and video mode in "config.spin2".
-  In particular, if you have problems that seem to be related to memory,
-  try tweaking the PSRAM_DELAY or HYPER_DELAY value
+  In particular, read RAMCONFIG.MD for more info on.. uh.. RAM config.
   
 - Run "build.sh".
 
@@ -46,6 +45,9 @@ See the issues section of this GitHub repository for known issues.
 
 - Enjoy the game! (Or not, if it's broken....)
 
+- You may return to the game selection by holding Start+Down for a few seconds or hitting Ctrl+Esc
+- You may RESET the game by holding Start+Up for a few seconds or hitting Ctrl+R
+- You may freeze the CPU by hitting Pause/Break - this is a debugging feature and may mess things up.
 
   -= FILES =-
   -----------
@@ -62,5 +64,39 @@ cram_tablegen.rb  - Can generates the above
 build.sh  - Standard build script
 build_gbrk.sh  - Build script for core debugging
 memstuff  - Various things to do with external memory
+
+  -= NOTES ON USB INPUT =-
+  ------------------------
+
+Supported USB input devices are:
+ - Any normal Keyboard (6KRO/boot protocol)
+ - Generic XInput controllers (possibly also real wired Xbox360 controllers)
+ - RetroBit SEGA Saturn/Megadrive USB controller (PID 0x0011 VID 0x0079)
+ - NeoGeo mini controller (PID 0x1112 VID 0x0E6F) (3-button only - C/d both map to C)
+
+Keyboard map:
+| Keyboard   | MegaDrive        |
+|:----------:|:----------------:|
+| Arrow Keys | D-Pad (Player 1) |
+|          X | A     (Player 1) |
+|          C | B     (Player 1) |
+|          V | C     (Player 1) |
+|          S | X     (Player 1) |
+|          D | Y     (Player 1) |
+|          F | Y     (Player 1) |
+|      Enter | Start (Player 1) |
+|          A | Mode  (Player 1) |
+|       Num5 | Up    (Player 2) |
+|       Num2 | Down  (Player 2) |
+|       Num1 | Left  (Player 2) |
+|       Num3 | Right (Player 2) |
+|          M | A     (Player 2) |
+|          , | B     (Player 2) |
+|          . | C     (Player 2) |
+|          J | X     (Player 2) |
+|          K | Y     (Player 2) |
+|          L | Y     (Player 2) |
+|   NumEnter | Start (Player 2) |
+|          H | Mode  (Player 2) |
 
 
