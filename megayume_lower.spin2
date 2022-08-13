@@ -316,7 +316,7 @@ mk_nibble_0   ' Immediate ops (decode headache!)
               mov pb,mk_opword
         if_z  call #mk_setup_reg32
         if_nz and mk_optmp1,#7
-        if_nz call #mk_setup_operand8
+        if_nz call #mk_setup_operand8_move
               call mk_readf
               'debug("doing bitop with ",uhex_byte(mk_optmp1),uhex_long(mk_memvalue))
               testbn mk_memvalue,mk_optmp1 wc
@@ -411,7 +411,7 @@ mk_nibble_5_not_addsub
               testb mk_opword,#3 andz
         if_z  jmp #mk_dbcc
               ' got SCC
-              callpb mk_opword,#mk_setup_operand8
+              callpb mk_opword,#mk_setup_operand8_move
               call mk_readf ' <- yes, this is stupid but accurate
               getnib pb,mk_opword,#2
               shr pb,#1 wc
@@ -428,6 +428,18 @@ mk_cmp
               push #mk_cmp_common
               jmp #mk_get_second_reg
 
+mk_cmpa
+              testb mk_opword,#8 wc ' long sized?
+        if_nc callpb mk_opword,#mk_setup_operand16_move
+        if_c  callpb mk_opword,#mk_setup_operand32_move
+              call mk_readf
+        if_nc signx mk_memvalue,#15
+
+              shr mk_opword,#9
+              and mk_opword,#7
+              skipf #%11_111_00 ' Skip swap and shift
+              alts mk_opword,#mk_a0
+              mov mk_optmp1,0-0
 mk_cmp_swapped
               xor mk_memvalue,mk_optmp1
               xor mk_optmp1,mk_memvalue
@@ -448,22 +460,6 @@ mk_cmp_common
               bitz mk_sr,#MK_ZERO_BIT
               testb mk_optmp0,#31 wc
         _ret_ bitc mk_sr,#MK_NEG_BIT
-
-
-mk_cmpa
-              testb mk_opword,#8 wc ' long sized?
-        if_nc callpb mk_opword,#mk_setup_operand16
-        if_c  callpb mk_opword,#mk_setup_operand32
-              call mk_readf
-        if_nc signx mk_memvalue,#15
-              mov pb,mk_opword
-              shr pb,#9
-              and pb,#7
-              alts pb,#mk_a0
-              mov mk_optmp1,0-0
-              mov mk_shiftit,#0
-              jmp #mk_cmp_common
-
 
 
 
@@ -532,8 +528,8 @@ mk_addsuba
               setq mk_dreg_mask
               muxq .adda_op,mk_opword
               testb mk_opword,#8 wc ' long sized?
-        if_nc callpb mk_opword,#mk_setup_operand16
-        if_c  callpb mk_opword,#mk_setup_operand32
+        if_nc callpb mk_opword,#mk_setup_operand16_move
+        if_c  callpb mk_opword,#mk_setup_operand32_move
               call mk_readf
               'debug("in mk_adda: ",uhex_long(mk_memvalue))
         if_nc signx mk_memvalue,#15
@@ -1283,7 +1279,7 @@ mk_nibble_E   ' shifts
 
 .memshift
               mov pb,mk_opword
-              call #mk_setup_operand16
+              call #mk_setup_operand16_move
               mov mk_shiftit,#15
               mov mk_optmp1,#1
               shr mk_opword,#8 ' get shift mode bits into place
@@ -1437,8 +1433,8 @@ mk_nibble_4   ' AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
               test mk_opword,#%110_000 wz
         if_nz jmp #mk_hub_movem
               testb mk_opword,#6 wc
-        if_nc call #mk_setup_operand16
-        if_c  call #mk_setup_operand32
+        if_nc call #mk_setup_operand16_move
+        if_c  call #mk_setup_operand32_move
               call mk_readf
         if_nc signx mk_memvalue,#7 wcz
         if_c  signx mk_memvalue,#15 wcz
@@ -1719,8 +1715,7 @@ mk_ea_headache
               mov mk_eatmp1,mk_opword ' backup
               call mk_getopf
               'debug("in mk_ea_headache ",uhex_word(mk_opword))
-              testb pb,#0 wz
-              testb pb,#1 wc
+              rczr pb wcz
         if_01 jmp #.longabs
         if_11 jmp #.index
               signx mk_opword,#15 ' absolute short or PC displacement
@@ -2251,7 +2246,7 @@ mk_hub_movep  ' MOVEP
 
 mk_hub_mul    ' MULU/MULS
               mov pb,mk_opword
-              call #mk_setup_operand16
+              call #mk_setup_operand16_move
               call mk_readf
               mov pb,mk_opword
               and pb,mk_dreg_mask
@@ -2268,7 +2263,7 @@ mk_hub_mul    ' MULU/MULS
 
 mk_hub_div    ' DIVU/DIVS
               mov pb,mk_opword
-              call #mk_setup_operand16
+              call #mk_setup_operand16_move
               call mk_readf ' get divider
               mov pb,mk_opword
               shr pb,#9
@@ -2325,7 +2320,7 @@ mk_hub_div    ' DIVU/DIVS
 
 
 mk_hub_srmove
-              call #mk_setup_operand16
+              call #mk_setup_operand16_move
               testb mk_opword,#10 wc ' FROM (NC) or TO (C) SR
         if_nc push mk_writef
         if_nc jmp #mk_rd_sr
@@ -2523,7 +2518,7 @@ mk_hub_sbcd
 
 mk_hub_nbcd
               'debug ("in NBCD with ",uhex(mk_opword))
-              call #mk_setup_operand8 ' opword still in PB!
+              call #mk_setup_operand8_move ' opword still in PB!
               call mk_readf
               ' See: https://github.com/flamewing/68k-bcd-verifier/blob/master/bcd-emul.cc#L104
               ' compute dd
@@ -2689,7 +2684,7 @@ mk_hub_cmpm
               jmp mk_readf
 
 mk_hub_chk
-              call #mk_setup_operand16 ' pb already loaded
+              call #mk_setup_operand16_move ' pb already loaded
               call mk_readf
               call #mk_get_second_reg
               andn mk_sr,#MK_OVER_MASK|MK_CARRY_MASK ' Undocumented flags
