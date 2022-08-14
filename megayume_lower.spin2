@@ -800,9 +800,9 @@ mk_romque_refill
               mov mk_romque_left,#MK_ROMQUE_SIZE
               mov ptra,mk_romque_area_ptr
               mov pa,mk_virtualpc
-              zerox pa,#22 ' Limit to 8 MB range
               ' Handle not long-aligned access (must logically be word aligned though!)
               rczr pa wcz
+              zerox pa,#20 ' Limit to 8 MB range
         if_c  sub  mk_romio_target,#2
         if_c  add  mk_romio_length,#1
               call #mk_readrom
