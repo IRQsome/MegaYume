@@ -794,6 +794,18 @@ mk_getop_ram
               rdword mk_opword,mk_memtmp0
         _ret_ movbyts mk_opword,#%%3201
 
+mk_romque_refill
+              mov mk_romio_target,mk_romque_area_ptr
+              mov mk_romio_length,#MK_ROMQUE_SIZE/2
+              mov mk_romque_left,#MK_ROMQUE_SIZE
+              mov ptra,mk_romque_area_ptr
+              mov pa,mk_virtualpc
+              zerox pa,#22 ' Limit to 8 MB range
+              ' Handle not long-aligned access (must logically be word aligned though!)
+              rczr pa wcz
+        if_c  sub  mk_romio_target,#2
+        if_c  add  mk_romio_length,#1
+              call #mk_readrom
 mk_getop_rom
               'debug("in getop_rom with ",udec(mk_romque_left))
               djf mk_romque_left,#mk_romque_refill
@@ -802,21 +814,6 @@ mk_getop_rom
               movbyts mk_opword,#%%3201
               ret wcz
 mk_romque_left    long 0
-
-mk_romque_refill
-              mov mk_romio_target,mk_romque_area_ptr
-              mov mk_romio_length,#MK_ROMQUE_SIZE/2
-              mov mk_romque_left,#MK_ROMQUE_SIZE
-              mov ptra,mk_romque_area_ptr
-              mov pa,mk_virtualpc
-              zerox pa,#22 ' Limit to 8 MB range
-              ' Handle not long-aligned access
-              rczr pa wcz
-        if_c  sub  mk_romio_target,#2
-        if_c  add  mk_romio_length,#1
-        if_nz push #mk_getop_rom
-        if_nz jmp #mk_readrom
-              jmp #mk_address_error_debug ' TODO: maybe make AE function code read program in this case?
 
 
 mk_condition_truth_table
