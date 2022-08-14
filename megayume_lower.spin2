@@ -2580,15 +2580,15 @@ mk_hub_addsubx
               testb mk_sr,#MK_EXT_BIT wc
               ' must be rcl for correct ripple carry
               rcl mk_memvalue,mk_shiftit
-              rcl mk_optmp1,mk_shiftit
+              shl mk_optmp1,mk_shiftit
               ' generate stupid overflow flag
               mov mk_optmp0,mk_optmp1
-              adds mk_optmp0,mk_memvalue wc
+              addsx mk_optmp0,mk_memvalue wc
               testb mk_optmp0,#31 xorc
               bitc mk_sr,#MK_OVER_BIT
               ' do actual add
-              'testb mk_sr,#MK_EXT_BIT wc
-              add mk_memvalue,mk_optmp1 wcz
+              testb mk_sr,#MK_EXT_BIT wc
+              addx mk_memvalue,mk_optmp1 wcz
               muxc mk_sr,#MK_CARRY_MASK|MK_EXT_MASK
               testb mk_optmp0,#31 wc
               bitc mk_sr,#MK_NEG_BIT
