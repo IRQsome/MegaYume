@@ -1399,14 +1399,6 @@ mk_nibble_4   ' AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
               altd mk_optmp0,#mk_flowop_impl_tbl
               jmp 0-0
 
-.jmp_jsr
-              call #mk_compute_ea
-              mov mk_branchdisplace,mk_effaddr
-              sub mk_branchdisplace,mk_virtualpc
-              testb mk_opword,#6 wc ' if NC, got JSR
-        if_c  jmp #mk_dobranch
-              jmp #mk_call
-
 
 .swap
               and mk_opword,#15
@@ -1475,6 +1467,22 @@ mk_nibble_4   ' AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
               jmp mk_writef
 
 
+.jmp_jsr
+              call #mk_compute_ea
+              mov mk_branchdisplace,mk_effaddr
+              sub mk_branchdisplace,mk_virtualpc
+              testb mk_opword,#6 wc ' if NC, got JSR
+        if_c  jmp #mk_dobranch
+              ' fall through
+mk_call
+              ' Push return address on stack
+              sub mk_a7,#4
+              mov mk_effaddr,mk_a7
+              call #mk_setup_ea32
+              mov mk_memvalue,mk_virtualpc
+              call mk_writef
+              'debug("SP after call: ",uhex_long(mk_a7),uhex_long(mk_virtualpc),shex_long(mk_branchdisplace))
+              jmp #mk_dobranch
 
 
 
@@ -1569,15 +1577,6 @@ mk_getopimm32
         _ret_ mov mk_opword,mk_optmp0
 
 
-mk_call
-              ' Push return address on stack
-              sub mk_a7,#4
-              mov mk_effaddr,mk_a7
-              call #mk_setup_ea32
-              mov mk_memvalue,mk_virtualpc
-              call mk_writef
-              'debug("SP after call: ",uhex_long(mk_a7),uhex_long(mk_virtualpc),shex_long(mk_branchdisplace))
-              jmp #mk_dobranch
 
 mk_nibble_6   ' branches
               ' compute destination
@@ -1970,8 +1969,8 @@ mk_hub_rte
               add mk_a7,#4
               'debug("RTE from ",uhex_long_(mk_virtualpc)," to ",uhex_long(mk_memvalue))
               mov mk_memvalue,mk_optmp2 ' only write SR after we're done popping
-              call #mk_wr_sr
-              jmp #mk_dobranch
+              push ##mk_dobranch
+              jmp #mk_wr_sr
 
 mk_hub_rtr
               mov mk_effaddr,mk_a7
@@ -2271,26 +2270,24 @@ mk_hub_div    ' DIVU/DIVS
               alts pb,#mk_d0
               mov mk_optmp0,0-0 ' get divisor
               tjz mk_memvalue,#.by_zero
-              mov mk_optmp1,#0 ' bit 0 holds appropriate result sign
               testb mk_opword,#8 wz ' set z if signed
         if_z  signx mk_memvalue,#15
         if_z  abs mk_memvalue wc
-        if_z_and_c bitnot mk_optmp1,#0
+        if_z  wrc mk_optmp1 ' bit 0 holds appropriate result sign
         if_z  abs mk_optmp0 wc
-        if_z_and_c bitnot mk_optmp1,#0
               qdiv mk_optmp0,mk_memvalue
+        if_z_and_c bitnot mk_optmp1,#0
               bitl mk_sr,#MK_CARRY_BIT
               getqx mk_memvalue    ' quotient
               getqy mk_optmp0      ' remainder
               ' Apply sign
-              testb mk_optmp1,#0 wc
-              negc mk_memvalue
-              negc mk_optmp0
+        if_z  testb mk_optmp1,#0 wc
+        if_z  negc mk_memvalue
+        if_z  negc mk_optmp0
               testb mk_memvalue,#15 wc
               bitc mk_sr,#MK_NEG_BIT
               ' Check overflow
               mov mk_optmp1,mk_memvalue
-              testb mk_opword,#8 wz ' set z if signed
         if_z  signx mk_memvalue,#15
         if_nz zerox mk_memvalue,#15
               cmp mk_optmp1,mk_memvalue wz
