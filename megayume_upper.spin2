@@ -749,7 +749,7 @@ repeatkey := 0
 repeat while poll_menukeys()
 
 repeat
-  if dirty\0
+  if dirty\false
     settiles(MENU_PLANEA,17,39,4,4," "+(ATTR_PAL0)<<11)
     longfill(VRAM_BASE+$3000,$1111_1111,INFO_HEIGHT*16*8)
     repeat y from 0 to INFO_HEIGHT-1
@@ -757,9 +757,9 @@ repeat
     if selection <= position
       position := (selection-1) #> 0
     if selection >= position+DIRLIST_HEIGHT-1
-      position := (selection-DIRLIST_HEIGHT+2) #> 0 <# gotfiles-DIRLIST_HEIGHT
-    repeat y from 4 to 4+DIRLIST_HEIGHT-1
-      tmp := y-4+position
+      position := (selection-DIRLIST_HEIGHT+2) #> 0 <# gotfiles-DIRLIST_HEIGHT    
+    repeat y from DIRLIST_Y to DIRLIST_Y+DIRLIST_HEIGHT-1
+      tmp := y-DIRLIST_Y+position
       attr := tmp == selection ? ATTR_PAL1 : ATTR_PAL2
       if tmp < gotfiles
         tmp2:=MKRAM_BASE+tmp*12
@@ -1336,15 +1336,6 @@ rom_icon
         long $1555_5511
         long $1111_1111
 
-scrollbar_tile
-        long $FFFF_0000
-        long $4565_5541
-        long $1555_5511
-        long $4555_5541
-        long $1555_5511
-        long $4555_5541
-        long $1555_5511
-        long $1111_1111
 
 CON
 
