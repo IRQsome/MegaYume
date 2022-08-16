@@ -13,7 +13,7 @@ CON ' Header
 ''
 VERSION_MAJOR = 1
 VERSION_MINOR = 0
-VERSION_RC = 0
+VERSION_RC    = 0
 
 '' Note: this sucks. not anymore.
 '' Perhaps more important note: use the included build.sh.
@@ -117,8 +117,6 @@ else
 'waitkey(MENUKEY_CONFIRM)
 
 repeat
-
-  menu_vdp_init()
   repeat
 #ifdef DIRECT_BOOT
     c.strncpy(@tmppath,@DIRECT_BOOT,MAX_PATH)
@@ -189,7 +187,7 @@ repeat
     flush_sram()
     c.fclose(srmfile\0)
 
-
+  menu_vdp_init()
 
 
 
@@ -496,9 +494,9 @@ byte[$E0] := encod(romsize-1) ' Set rom size limit for lower code
 exmem_fill(0,0,EXRAM_MAX,true) ' Fill entire memory with zeroes
 tmp:=0
 repeat
-  x := (tmp*26)/romsize
+  x := (tmp*25)/romsize
   settiles(MENU_PLANEA,7,7+x,14,14,258+ATTR_PAL2<<11)
-  settiles(MENU_PLANEA,7+x+1,7+26,14,14," "+ATTR_PAL2<<11)
+  settiles(MENU_PLANEA,7+x+1,7+25,14,14," "+ATTR_PAL2<<11)
   rom_read_block(MKRAM_BASE+tmp&$4000)
   exmem_write(tmp,MKRAM_BASE+tmp&$4000,$4000,true)
 while (tmp+=$4000)<romsize
@@ -1078,21 +1076,25 @@ PRI waitkey(key)
 repeat until poll_menukeys() & key
 repeat while poll_menukeys() & key
 
+CON
+MSGBOX_X = 6
+MSGBOX_Y = 12
+MSGBOX_WIDTH  = 28
+MSGBOX_HEIGHT = 5
+MSGBOX_X2 = MSGBOX_X+MSGBOX_WIDTH-1
+MSGBOX_Y2 = MSGBOX_Y+MSGBOX_HEIGHT-1
+
 PRI msgbox_simple(str)
-msgbox_outline(14,2)
-putstring(str,7,13,MENU_PLANEA,0)
-
-PRI msgbox_outline(w,h)
-
-settiles(MENU_PLANEA,20-w,20+w,14-h,14+h," ")
-settiles(MENU_PLANEA,20-w,20+w,14-1-h,14-1-h,$90)
-settiles(MENU_PLANEA,20-w,20+w,14+1+h,14+1+h,$90)
-settiles(MENU_PLANEA,20-1-w,20-1-w,14-h,14+h,$91)
-settiles(MENU_PLANEA,20+1+w,20+1+w,14-h,14+h,$91)
-settile(MENU_PLANEA,20-1-w,14-1-h,$9F)
-settile(MENU_PLANEA,20-1-w,14+1+h,$9D)
-settile(MENU_PLANEA,20+1+w,14-1-h,$9E)
-settile(MENU_PLANEA,20+1+w,14+1+h,$9C)
+settiles(MENU_PLANEA,MSGBOX_X,MSGBOX_X2,MSGBOX_Y,MSGBOX_Y2," ")
+settiles(MENU_PLANEA,MSGBOX_X,MSGBOX_X2,MSGBOX_Y-1,MSGBOX_Y-1,$90)
+settiles(MENU_PLANEA,MSGBOX_X,MSGBOX_X2,MSGBOX_Y2+1,MSGBOX_Y2+1,$90)
+settiles(MENU_PLANEA,MSGBOX_X-1,MSGBOX_X-1,MSGBOX_Y,MSGBOX_Y2,$91)
+settiles(MENU_PLANEA,MSGBOX_X2+1,MSGBOX_X2+1,MSGBOX_Y,MSGBOX_Y2,$91)
+settile(MENU_PLANEA,MSGBOX_X-1,MSGBOX_Y-1,$9F)
+settile(MENU_PLANEA,MSGBOX_X-1,MSGBOX_Y2+1,$9D)
+settile(MENU_PLANEA,MSGBOX_X2+1,MSGBOX_Y-1,$9E)
+settile(MENU_PLANEA,MSGBOX_X2+1,MSGBOX_Y2+1,$9C)
+putstring(str,MSGBOX_X+1,MSGBOX_Y+1,MENU_PLANEA,0)
 
 PRI settile(plane,x,y,tile)
 word[VRAM_BASE+plane][y<<6+x] := tile
