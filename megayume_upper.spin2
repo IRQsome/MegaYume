@@ -1048,7 +1048,6 @@ PRI menu_vdp_init() | i, tmp
   iconcopy(VRAM_BASE+256*32,@dirup_icon)
   iconcopy(VRAM_BASE+257*32,@folder_icon)
   iconcopy(VRAM_BASE+258*32,@rom_icon)
-  iconcopy(VRAM_BASE+259*32,@scrollbar_tile)
 
   screen_reset()
 
