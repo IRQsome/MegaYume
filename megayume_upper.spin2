@@ -11,8 +11,11 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
-MY_VERSION = 06
-'' Note: this sucks. not as much.
+VERSION_MAJOR = 1
+VERSION_MINOR = 0
+VERSION_RC = 0
+
+'' Note: this sucks. not anymore.
 '' Perhaps more important note: use the included build.sh.
 
 #include "config.spin2"
@@ -985,7 +988,12 @@ return 0
 PRI screen_reset() | tmp
 clearplane(MENU_PLANEA)
 tmp := __builtin_alloca(40)
-c.sprintf(tmp,string($BA,$8F," MegaYume beta %02d ",$8C,$BB),MY_VERSION)
+if VERSION_RC < 0
+  c.sprintf(tmp,string($BA,$8F," MegaYume V%d.%d ",$8C,$BB),VERSION_MAJOR,VERSION_MINOR)
+elseif VERSION_RC == 0
+  c.sprintf(tmp,string($BA,$8F," MegaYume V%d.%d-beta ",$8C,$BB),VERSION_MAJOR,VERSION_MINOR)
+else
+  c.sprintf(tmp,string($BA,$8F," MegaYume V%d.%d-RC%d ",$8C,$BB),VERSION_MAJOR,VERSION_MINOR,VERSION_RC)
 putstring(tmp,20-strsize(tmp)+/2,1,MENU_PLANEA,ATTR_PAL0)
 
 
