@@ -149,9 +149,9 @@ repeat
     'c.sprintf(@tmppath,@"Rom size: %d",romsize)
     'msgbox_simple(@tmppath)
     'waitkey(MENUKEY_CONFIRM)
-    settile(MENU_PLANEA,0,0,"X"+ATTR_PAL2<<11)
+    'settile(MENU_PLANEA,0,0,"X"+ATTR_PAL2<<11)
     exmem_start()
-    settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
+    'settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
     do_load_rom()
 
     if READBACK_TEST
@@ -665,8 +665,6 @@ MENUKEY_BACK    = %0010_0000
 MENUKEY_PGUP   = %0100_0000
 MENUKEY_PGDOWN = %1000_0000
 
-DIRLIST_HEIGHT = 21
-
 PRI do_opening() | y,ptr,vram
 
 screen_reset()
@@ -713,6 +711,16 @@ byte " Ｈｉｔ　ＣＯＮＦＩＲＭ　ｋｅｙ　ｔｏ　ｃｏｎｔｉ�
 byte "",0
 byte 127
 
+CON
+
+INFO_X = 21
+INFO_Y = 6
+INFO_HEIGHT = 19
+
+DIRLIST_X = 3
+DIRLIST_Y = 4
+DIRLIST_HEIGHT = 21
+
 
 PRI do_filechooser() | keys,x,y,tmp,gotfiles,tmp2,attr,selection,position,dirty
 
@@ -728,7 +736,7 @@ sortFiles(gotfiles)
 screen_reset()
 longfill(VRAM_BASE+$2800,0,32*8)
 draw_shiftjis_string(@curdir,VRAM_BASE+$2800,1,2,32*2)
-show_shiftjis_string($2800/32,32,2,3,MENU_PLANEA)
+show_shiftjis_string($2800/32,32,DIRLIST_X,DIRLIST_Y-1,MENU_PLANEA)
 
 
 
@@ -743,9 +751,9 @@ repeat while poll_menukeys()
 repeat
   if dirty\0
     settiles(MENU_PLANEA,17,39,4,4," "+(ATTR_PAL0)<<11)
-    longfill(VRAM_BASE+$3000,$1111_1111,17*16*8)
-    repeat y from 0 to 17
-      show_shiftjis_string($3000/32+y*16 + ATTR_PAL2<<11,16,18,6+y,MENU_PLANEA)
+    longfill(VRAM_BASE+$3000,$1111_1111,INFO_HEIGHT*16*8)
+    repeat y from 0 to INFO_HEIGHT-1
+      show_shiftjis_string($3000/32+y*16 + ATTR_PAL2<<11,16,INFO_X,INFO_Y+y,MENU_PLANEA)
     if selection <= position
       position := (selection-1) #> 0
     if selection >= position+DIRLIST_HEIGHT-1
@@ -755,25 +763,26 @@ repeat
       attr := tmp == selection ? ATTR_PAL1 : ATTR_PAL2
       if tmp < gotfiles
         tmp2:=MKRAM_BASE+tmp*12
-        settile(MENU_PLANEA,2,y," "+attr<<11)
-        settile(MENU_PLANEA,3,y,byte[tmp2++]+256+attr<<11)
-        repeat x from 1 to 8
-          settile(MENU_PLANEA,x+3,y,byte[tmp2++]+attr<<11)
-          settile(MENU_PLANEA,12,y,(byte[tmp2] <> " "?".":" ")+attr<<11)
-        repeat x from 9 to 11
-          settile(MENU_PLANEA,x+4,y,byte[tmp2++]+attr<<11)
-          settile(MENU_PLANEA,16,y," "+attr<<11)
+        settile(MENU_PLANEA,DIRLIST_X,y," "+attr<<11)
+        settile(MENU_PLANEA,DIRLIST_X+1,y,byte[tmp2++]+256+attr<<11)
+        repeat x from 2 to 9
+          settile(MENU_PLANEA,DIRLIST_X+x,y,byte[tmp2++]+attr<<11)
+        settile(MENU_PLANEA,DIRLIST_X+10,y,(byte[tmp2] <> " "?".":" ")+attr<<11)
+        repeat x from 11 to 13
+          settile(MENU_PLANEA,DIRLIST_X+x,y,byte[tmp2++]+attr<<11)
+          settile(MENU_PLANEA,DIRLIST_X+14,y," "+attr<<11)
       else
-        settiles(MENU_PLANEA,2,16,y,y," "+(ATTR_PAL2)<<11)
+        settiles(MENU_PLANEA,DIRLIST_X,DIRLIST_X+14,y,y," "+(ATTR_PAL2)<<11)
 
     ifnot gotfiles
+      ' Does this case ever actually happen anymore?
       putstring(@"No Files...",18,4,MENU_PLANEA,ATTR_PAL0)
     else
       case byte[MKRAM_BASE+12*selection]
-        0:putstring(@"Go one folder up.",18,4,MENU_PLANEA,ATTR_PAL0)
-        1:putstring(@"Folder",18,4,MENU_PLANEA,ATTR_PAL0)
+        0:putstring(@"Go one folder up.",INFO_X,4,MENU_PLANEA,ATTR_PAL0)
+        1:putstring(@"Folder",INFO_X,4,MENU_PLANEA,ATTR_PAL0)
         2:
-          putstring(@"ROM info:",18,4,MENU_PLANEA,ATTR_PAL0)
+          putstring(@"ROM info:",INFO_X,4,MENU_PLANEA,ATTR_PAL0)
           c.strncpy(@tmppath,@curdir,MAX_PATH-12)
           filegetname(@tmppath+strsize(@tmppath),selection)
           if open_romfile(@tmppath) < 0
@@ -802,7 +811,7 @@ repeat
             draw_shiftjis_string(@tmppath,VRAM_BASE+$3000+(15*16+0)*32,1,2,32)
 
 
-  settile(MENU_PLANEA,0,0,"0"+ATTR_PAL2<<11)
+  'settile(MENU_PLANEA,0,0,"0"+ATTR_PAL2<<11)
   keys := poll_menukeys()
   if keys & MENUKEY_BACK
     repeat while poll_menukeys() & MENUKEY_BACK
@@ -1039,6 +1048,7 @@ PRI menu_vdp_init() | i, tmp
   iconcopy(VRAM_BASE+256*32,@dirup_icon)
   iconcopy(VRAM_BASE+257*32,@folder_icon)
   iconcopy(VRAM_BASE+258*32,@rom_icon)
+  iconcopy(VRAM_BASE+259*32,@scrollbar_tile)
 
   screen_reset()
 
@@ -1326,6 +1336,15 @@ rom_icon
         long $1555_5511
         long $1111_1111
 
+scrollbar_tile
+        long $FFFF_0000
+        long $4565_5541
+        long $1555_5511
+        long $4555_5541
+        long $1555_5511
+        long $4555_5541
+        long $1555_5511
+        long $1111_1111
 
 CON
 
