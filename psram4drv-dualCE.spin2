@@ -31,7 +31,8 @@
  Revision history:
  ----------------
    0.91b   2 MAR 2022  rogloh      -pre-release demo-
- 
+   0.93b2  1 AUG 2022  rogloh      -special custom build that allows syclk/3 & sysclk/4 rates-
+
 --------------------------------------------------------------------------------------------------
 }}
 
@@ -78,20 +79,29 @@ CON
     FASTWRITE_BIT    = 30  ' bit set when writes are done at sysclk/1 transfer rate instead of sysclk/2
     UNREGCLK_BIT     = 29  ' bit set when unregistered clock pins are enabled (experimental only)
     EXPANSION_BIT    = 28  ' bit set to expand driver to run HUB exec code
-
-    'misc
-    'MAX_FLASH_SIZE   = 512 ' maximum number of bytes written to flash
-    'OVERHEAD_CYCLES  = 100 ' approximate P2 overhead cycles while CS is low, with some safety margin
+    SLOWCLK_BIT      = 27
+    CLKSEL_BIT       = 26
 
     'reset timing
-    'RESET_HIGH_US    = 150 ' idle time before starting reset pulse in microseconds
-    'RESET_LOW_US     =   3 ' active low reset pulse width in microseconds
     MIN_CS_DELAY_US  = 150 ' minimum delay in microseconds after reset ends before first memory access
 
-    ' size of memory device page
+    ' size of the effective PSRAM page in bytes (1 device * 1kB)
     PAGE_SIZE = 1024
     PAGE_BITS = encod PAGE_SIZE
 
+    ' number of P2 clocks in slowest path holding up real time COGs
+    SLOWEST_PATH = 388
+
+    ' number of P2 clocks to read a burst from polling and back to polling, 
+    ' this is excluding transfer time and per fragment overheads which are added separately
+    BURST_READ_OVERHEAD_CLKS = 228
+
+    ' additional P2 overhead clocks per fragment excluding transfer time
+    FRAGMENT_OVERHEAD_CLKS = 90 
+
+    ' number of P2 clocks to transfer a long
+    CLKS_PER_LONG = 16
+ 
 '--------------------------------------------------------------------------------------------------
 
 ' This Cog is started by the SPIN2 memory driver API, however it can also be started independently
@@ -107,7 +117,7 @@ CON
 '   startupParams[1]: configuration flags for driver
 '   startupParams[2]: port A reset mask (lower 32 P2 pins)
 '   startupParams[3]: port B reset mask (upper 32 P2 pins)
-'   startupParams[4]: base P2 pin number of data bus used by driver (0, 8,16,24,32,40,48,56)
+'   startupParams[4]: base P2 pin number of data bus used by driver (0,4,8,12,...,60)
 '   startupParams[5]: pointer to 32 long device parameter structure in HUB RAM
 '   startupParams[6]: pointer to 8 long COG parameter structure in HUB RAM
 '   startupParams[7]: mailbox base address for this driver to read in HUB RAM (driver clear the mailbox mem)
@@ -202,13 +212,16 @@ CON
 '  bit
 '   31 30           24 23          16 15            8 7            0
 '  -----------------------------------------------------------------
-' | I |   Reserved    |   Reserved   |    CLK pin    |    CE pin    |
+' | I |   Reserved    | Upper CE pin |    CLK pin    | Lower CE pin |
 '  -----------------------------------------------------------------
 '
 '  The "I" bit (bit31) is the "invalid" bit, it must be set to 1 if the bank is not in use.
 '
-'  The 2 pin fields define the P2 pins attached to the device control pins (and range from 0-63).
-'  Both pins are required to be defined and all are used by this driver.
+'  The 3 pin fields define the P2 pins attached to the device control pins.
+'  In cases of 8MB devices, the upper and lower CE pins can be configured differently to enable
+'  a contiguous memory space.  This will make the pair of device look somewhat like a single 
+'  16 bit device, although it won't be able to correctly cross the boundary during transfers.
+'  For 16MB or larger sized memories they should be set to the same values.
 '--------------------------------------------------------------------------------------------------
 
 ' Returns the address of this driver's location in hub RAM to start it
@@ -407,12 +420,18 @@ init
 
             if_z            add     expansion, ptrb         'compensate for HUB address
             if_nz           mov     expansion, ##donerepeats'disable expansion when flag bit clear
-                            testb   flags, #UNREGCLK_BIT wc 'check if we have registered clks
-            if_nc           or      clkconfig, registered   'enable this if so
-            if_nc           mov     clkdelay, #0            'remove clk delay if registered clock
+
+                            testb   flags, #SLOWCLK_BIT wz
+            if_z            shl     clkduty, #1             'sysclk/4 or sysclk/3 is enabled
+                            testb   flags, #CLKSEL_BIT wc
+            if_nc_and_z     shr     xfreq2, #1              'enable sysclk/4 if clksel=0
+            if_nc_and_z     add     clkdelay, #13           'enable sysclk/4 if clksel=0
+            if_c_and_z      mov     xfreq2, ##$2AAAAAAB     'override streamer frequency for sysclk/3 if clksel=1
+            if_c_and_z      sub     clkduty, #1             'sysclk/3 is selected if clksel=1
+            if_c_and_z      add     clkdelay, #5            'enable sysclk/3 if clksel=1
 
                             ' setup data pin modes and data bus pin group in streamer commands
-                            and     datapins, #%111000      'compute base pin
+                            and     datapins, #%111100      'compute base pin
                             or      datapins, ##(3<<6)      'configure 4 pins total
                             mov     a, datapins             'get data pin base
                             wrpin   registered, datapins    'prepare data pins for address phase transfer
@@ -432,26 +451,38 @@ init
                             rdlong  $000, devicelist        'read bank/pin data for all banks    
                             mov     const512, ##512         'prepare constant
 
-                            mov     ptrb, #16               'point to bank pin config data
-                            rep     @pinloop, #16           'iterate through 16 banks
-                            rdlut   pinconfig, ptrb++ wc    'invalid if pin config bit 31 is one
-                            and     pinconfig, pinmask      'save us from invalid bits in args
-            if_nc           getbyte cspin, pinconfig, #0    'read CS pin number
-            if_nc           wrpin   #0, cspin               'clear smart pin mode
-            if_nc           drvh    cspin                   'setup pins for all banks
-            if_nc           getbyte clkpin, pinconfig, #1   'read CLK pin number
-            if_nc           fltl    clkpin                  'disable Smartpin clock output mode
-            if_nc           wrpin   clkconfig, clkpin       'set clk to Smartpin transition output
-            if_nc           wxpin   #1, clkpin              'configure for 1 clocks between transitions
-            if_nc           drvl    clkpin                  'set clk state low
-pinloop
                             ' generate minimum CE high time before access
                             qdiv    frequency, ##1000000    'convert from Hz to MHz
                             getqx   c                       'get P2 clocks per microsecond
                             mov     a, #MIN_CS_DELAY_US     'get time before active delay in microseconds 
-                            mul     a, c                    'convert microseconds to clocks
-                            waitx   a                       'delay
-                            call    #hwinit                 'setup HW into QSPI mode
+                            mul     c, a                    'convert microseconds to clocks
+
+                            mov     ptrb, #16               'point to bank pin config data
+                            mov     a, #16
+pinloop
+                            rdlut   pinconfig, ptrb++ wc    'invalid if pin config bit 31 is one
+            if_c            jmp     #pinlooptest
+                            and     pinconfig, pinmask      'save us from invalid bits in args
+                            getbyte cspin, pinconfig, #0    'read CS pin number for low 8MB sub-bank
+                            wrpin   #0, cspin               'clear smart pin mode
+                            drvh    cspin                   'setup pins for all banks
+                            getbyte cspin, pinconfig, #2    'read secondary CS pin number for high sub-bank
+                            wrpin   #0, cspin               'clear smart pin mode
+                            drvh    cspin                   'setup pins for all banks
+                            getbyte clkpin, pinconfig, #1   'read CLK pin number
+                            fltl    clkpin                  'disable Smartpin clock output mode
+                            wrpin   clkconfig, clkpin       'set clk to Smartpin pulse mode output
+                            wxpin   #1, clkpin              'configure for 1 clocks between updates
+                            drvl    clkpin                  'set clk state low
+                            waitx   c                       'delay
+                            call    #hwinit                 'setup HW into QSPI mode for lower 8MB sub-bank
+                            xor     cspin, pinconfig        'compare secondary CS pin # against primary CS pin #
+                            test    cspin, #$3f wz          'with only 6 bits of significance
+            if_ne           getbyte cspin, pinconfig, #0    'revert back to different primary CS pin number
+            if_ne           call    #hwinit                 'setup HW into QSPI mode for upper 8MB sub-bank
+pinlooptest
+                            djnz    a, #pinloop
+                            bith    ximm8, #16              'reverse order of nibbles after init
 
                             ' setup the COG mailboxes and addresses 
                             rep     #2, #8                  'setup loop to patch mailbox addresses
@@ -749,13 +780,13 @@ clockpatch      wxpin   #1, clkpin              'adjust transition delay to # cl
 cspin                                           'shared with code patched during init
 speedpatch      setxfrq xfreq1                  'instruction to set read speed to sysclk/1
 registered      long    %100_000_000_00_00000_0 'config pin for clocked input
-clkconfig       long    %1_00101_0              'config for Smartpin transition output mode
-clkdelay        long    1
+clkconfig       long    %100_000_000_01_00100_0 'config for Smartpin pulse output mode
+clkdelay        long    19
 regdatabus      long    0
 
 deviceaddr      long    $10
 rrcounter
-pinmask         long    $ff3f7f7f
+pinmask         long    $ff7f7f7f
 
 ' jump addresses for the per COG handlers
 cog0_handler    long    cog0
@@ -835,6 +866,7 @@ wrclks          long    0
 
 pattern         long    0
 pagesize        long    PAGE_SIZE
+clkduty         long    $10002                  'default is 50% clock @sysclk/2 rate
 
 ' temporary general purpose regs
 a               long    0
@@ -881,14 +913,17 @@ hwinit                      setxfrq xfreq2
                             call    #sendspi 
                             ret
 
-sendqspi                    mov     clks,#4
+sendqspi                    mov     clks, #2
                             skipf   #%110
                             mov     pb, xsendimm
 
-sendspi                     mov     clks, #16
+sendspi                     mov     clks, #8
                             mov     pb, ximm8
+                            wxpin   #1, clkpin
                             drvl    cspin                   'active low chip select
                             drvl    datapins                'enable the DATA bus
+                            wxpin   clkduty, clkpin         'start clock
+                            nop                             'delay for clock edge alignment
                             xinit   pb, pa                  'send 32 bit immediate data
                             wypin   clks, clkpin            'start memory clock output 
                             waitxfi                         'wait for the completion
@@ -967,9 +1002,9 @@ r_resume_burst              getnib  b, request, #0          ' a b c d e    get b
                             bitnc   regdatabus, #16         ' a b c d e    setup if data bus is registered or not
 r_locked_burst              mov     c, count wz             ' | | | d e f  get count of bytes left to read
                             fle     c, limit wc             ' | | | d e f  enforce the burst limit
-                            mov     clks, #2 wc             ' a | | | | |  2 clock transitions per byte
-                            mov     clks, #4 wc             ' | b | | | |  4 clock transitions per word
-                            mov     clks, #8 wc             ' | | c | | |  8 clock transitions per long
+                            mov     clks, #2 wc             ' a | | | | |  2 clocks per byte
+                            mov     clks, #4 wc             ' | b | | | |  4 clocks per word
+                            mov     clks, #8 wc             ' | | c | | |  8 clocks per long
                             skipf   read_skip               ' a b c | | |  extend skipf sequence for single reads
             if_nc           mov     resume, complete_rw     ' a b c d e f  burst/single read will complete
             if_c            mov     resume, continue_read   ' | | | d e f  burst read will continue
@@ -988,29 +1023,26 @@ r_locked_burst              mov     c, count wz             ' | | | d e f  get c
                             shl     clks, #1                ' | | | d e f  multiply by two to work out nibble count
 
                             setword xrecvdata, clks, #0     'set the nibble transfers needed in streamer
-                            add     clks, #14               'include 14 address+delay clocks
-                            add     clks, clks              'compute clock transitions by doubling
+                            add     clks, #13               'include 13 address+delay clocks
                             mov     cmdaddr, addr1          'get start address of transfer
                             setbyte cmdaddr, #$EB, #3       'add quad read command
+                            testb   cmdaddr, #23 wc         'get A23 bit to determine sub-bank
+            if_c            getbyte cspin, pinconfig, #2    'use secondary CE pin for upper 8MB sub-bank
 
-                            splitb  cmdaddr                 'reverse nibbles in address to match bus order
-                            rev     cmdaddr
-                            movbyts cmdaddr, #%%0123
-                            mergeb  cmdaddr
-
+                            wxpin   #1, clkpin              'increase clock update rate
                             drvl    cspin                   'activate chip select
                             drvl    datapins                'enable data bus
-            '               setxfrq xfreq2                  'setup streamer frequency (sysclk/2)
+                            wxpin   clkduty, clkpin         'resync clock output
+                            movbyts cmdaddr, #%%0123        'reverse bytes in address to match bus order
                             xinit   ximm8, cmdaddr          'stream out command+address
                             wypin   clks, clkpin            'start clock output
-                            xcont   #0,#0                   '1 dummy transfer to resync to the streamer for timely tri-stating
-                            xcont   #6,#0                   '6 clock transfers for bus turnaround delay
-                          '  drvh    datapins                'enable this only if validating actual tri-state time on a scope
+                            add     clkdelay, delay         'add configurable fine input delay
+                            setq    xfreq1                  'reconfigure with single cycle xfreq (sysclk/1)
+                            xcont   clkdelay, #0            'streamer transfers during bus turnaround delay and read latency
+                            sub     clkdelay, delay         'restore for next time
+                            waitxmt                         'wait until first command has completed before tri-stating
                             fltl    datapins                'safe to float the data bus, address has been sent by now
                             wrpin   regdatabus, datapins    'setup data bus inputs as registered or not for read timing control
-                            setq    xfreq1                  'reconfigure with single cycle xfreq (sysclk/1)
-                            xcont   delay, #0               'configurable fine input delay per P2 clock cycle
-                            xcont   #6, #0                  'fixed delay offset to expand delay range
             if_z            skipf   #%0100100               'special skip case for read-modify-write(RWM)
                                                             'Bursts Bytes Words Longs  RMW
                             setq    xfreq2                  '   a     b     c     d     e
@@ -1028,9 +1060,9 @@ r_locked_burst              mov     c, count wz             ' | | | d e f  get c
                             rdlong  a, ptrb                 '  c    d    e   read back data written to mailbox
                             setq    count                   '  c    d    e   setup bit mux mask
                             muxq    a, hubdata              '  c    d    e   apply bit mux
-                            mov     wrclks, #20             '  c    |    |   setup clks for byte write
-                            mov     wrclks, #24             '  |    d    |   setup clks for word write
-                            mov     wrclks, #32             '  |    |    e   setup clks for long write
+                            mov     wrclks, #10             '  c    |    |   setup clks for byte write
+                            mov     wrclks, #12             '  |    d    |   setup clks for word write
+                            mov     wrclks, #16             '  |    |    e   setup clks for long write
                             setword xsendimm, #2, #0        '  c    |    |
                             setword xsendimm, #4, #0        '  |    d    |
                             setword xsendimm, #8, #0        '  |    |    e
@@ -1095,12 +1127,16 @@ complete_rw_lut
 checknext                   tjz     addr2, #listcomplete    'not special, check if the list is complete
                             rdlong  pa, ptrb[-1]            'check if list has been aborted by client
                             tjns    pa, #listcomplete       'exit if it has
-                            skipf   #%1000                  'do not notify if list is continuing
-                            wrlong  addr2, ptrb             ' a  write back next list address
-listcomplete                altd    id, #id0                ' a  compute COG's state address
-                            bitl    0-0, #LIST_BIT          ' a  clear list flag for this COG
-            _ret_           push    #notify                 ' |  we are done with the list
-            _ret_           push    #poller                 ' a  we are still continuing the list
+                            testb   id, #LOCKED_BIT wz      'check if we have the locked attribute on this COG
+            if_z            skipf   #%1100010               'skip polling and notification branch setup below (b)
+            if_z            mov     hubdata, addr2          'populate parameter for list reading
+                            skipf   #%1000                  '   | do not notify if list is continuing (a)
+                            wrlong  addr2, ptrb             ' a b  write back next list address
+listcomplete                altd    id, #id0                ' a b compute COG's state address
+                            bitl    0-0, #LIST_BIT          ' a b clear list flag for this COG
+            _ret_           push    #notify                 ' | | we are done with the list
+            _ret_           push    #poller                 ' a | we are still continuing the list
+            _ret_           push    #real_list              '   b continue with the list without re-poll
 extendedreq                 tjz     count, #notransfer_lut  'test for single transfers, do nothing if extd *** 
                             getnib  a, addr2, #7            'check the request type
                             cmp     a, #$F wz               'write burst $F = bank to bank cases (b) or (c)
@@ -1140,14 +1176,8 @@ extendedreq                 tjz     count, #notransfer_lut  'test for single tra
                             sub     total, #1 wz            ' a | |  decrement scanline count
             if_z            sub     total, #1 wz            ' | b |  decrement scanline count after write
             if_z            sub     total, orighubsize wz   ' | | c  decrement bytes sent after write
-            if_nz           jmp     #moretransfers          ' a b c  more transfers still to go
-                            tjz     link, #listcomplete     ' a b c  test link for next request
-                            rdlong  pa, ptrb[-1]            'check if list has been aborted by client
-                            tjns    pa, #listcomplete       'will exit if it has
-                            wrlong  link, ptrb              'setup list next pointer
-                            altd    id, #id0                'compute COG's state address
-                            bitl    0-0, #LIST_BIT          'clear list flag for this COG
-            _ret_           push    #poller                 'we will return to polling
+            if_z            mov     addr2, link             'if completing get link to next list element
+            if_z            jmp     #checknext              'check next element
 moretransfers               getbyte request, addr1, #3      'prepare next request
                             testb   id, #LOCKED_BIT wz      'check if we can keep sending or need to yield
             if_z            skipf   #%1110                  '     skip some code if we are locked
@@ -1208,8 +1238,8 @@ w_resume_burst              mov     c, count                '  a b c d e f g h  
                             subr    d, pagesize             '  | | | d e f g h  figure out how many bytes remain before we hit the boundary
                             fle     c, d wc                 '  | | | d e f g h  compare this size to our transfer size and limit it
                             mov     wrclks, c               '  a b c d e f g h  number of bytes to be sent
-                            mul     wrclks, #4              '  a b c d e f g h  convert to clock transitions (2 transitions/nibble)
-                            add     wrclks, #16             '  a b c d e f g h  add header clock transitions
+                            add     wrclks, c               '  a b c d e f g h  convert to clocks (2 nibble clocks per byte)
+                            add     wrclks, #8              '  a b c d e f g h  add header clocks 
             if_c            mov     resume, continue_write  '  | | | | e f | h  and we will continue with a sub-burst again
                             mov     pb, c                   '  | | | d | | g |  get number of bytes to be filled
                             shr     pb, a                   '  | | | d | | g |  scale into number of items to fill
@@ -1219,16 +1249,16 @@ w_resume_burst              mov     c, count                '  a b c d e f g h  
                             setword xsenddata, c, #0        '  | | | | e f | h  setup write burst bytes to be streamed
                             add     xsenddata, c            '  | | | | e f | h  convert to nibbles
 
+                            testb   addr1, #23 wc           'get A23 bit to determine sub-bank
+            if_c            getbyte cspin, pinconfig, #2    'use secondary CE pin for upper 8MB sub-bank
 writecommon                 mov     cmdaddr, addr1          'get start address of transfer
                             setbyte cmdaddr, #$02, #3       'add quad write command
-
-                            splitb  cmdaddr                 'reverse nibbles in address to match bus order
-                            rev     cmdaddr                 
-                            movbyts cmdaddr, #%%0123
-                            mergeb  cmdaddr
                             
+                            wxpin   #1, clkpin              'increase clock update rate
                             drvl    cspin                   'activate chip select
                             drvl    datapins                'enable the DATA bus
+                            wxpin   clkduty, clkpin         'resync clock output
+                            movbyts cmdaddr, #%%0123        'reverse bytes in address to match bus order
                             xinit   ximm8, cmdaddr          'send 8 nibbles of address and command via LUT translation
                             wypin   wrclks, clkpin          'start memory clock output 
                                                          

@@ -10,7 +10,7 @@
  --------
  
  * single COG PSRAM based driver
- * supports 4x4bit PSRAM devices formin a 16 bit data bus, with common clock and chip enable
+ * supports 2x4bit PSRAM devices forming an 8 bit data bus, with common clock and chip enable
  * up to 16 banks of memory devices can be mapped on 16MB/32MB/64MB/128MB/256MB boundaries 
  * device selected on the bus will be based on the address bank in the memory request
  * configurable control pins and shared data bus group for the memory devices
@@ -30,8 +30,9 @@
 
  Revision history:
  ----------------
-   0.9b   22 DEC 2021  rogloh      -general BETA release-
+   0.93b   4 JUL 2022  rogloh      added 8 bit bus PSRAM driver
    0.93b2  1 AUG 2022  rogloh      -special custom build that allows syclk/3 & sysclk/4 rates-
+
  
 --------------------------------------------------------------------------------------------------
 }}
@@ -85,23 +86,22 @@ CON
     'reset timing
     MIN_CS_DELAY_US  = 150 ' minimum delay in microseconds after reset ends before first memory access
 
-    ' size of the effective PSRAM page in bytes (4 devices * 1kB)
-    PAGE_SIZE = 4096
+    ' size of the effective PSRAM page in bytes (2 devices * 1kB)
+    PAGE_SIZE = 2048
     PAGE_BITS = encod PAGE_SIZE
 
     ' number of P2 clocks in slowest path holding up real time COGs
-    SLOWEST_PATH = 752
+    SLOWEST_PATH = 766
 
     ' number of P2 clocks to read a burst from polling and back to polling, 
     ' this is excluding transfer time and per fragment overheads which are added separately
-    BURST_READ_OVERHEAD_CLKS = 254
+    BURST_READ_OVERHEAD_CLKS = 238
 
     ' additional P2 overhead clocks per fragment excluding transfer time
-    FRAGMENT_OVERHEAD_CLKS = 114 
+    FRAGMENT_OVERHEAD_CLKS = 98  
 
     ' number of P2 clocks to transfer a long
-    CLKS_PER_LONG = 4
-    
+    CLKS_PER_LONG = 8
 '--------------------------------------------------------------------------------------------------
 
 ' This Cog is started by the SPIN2 memory driver API, however it can also be started independently
@@ -436,19 +436,16 @@ init
 
                             ' setup data pin modes and data bus pin group in streamer commands
                             and     datapins, #%111000      'compute base pin
-                            or      datapins, ##(15<<6)     'configure 16 pins total
+                            or      datapins, ##(7<<6)      'configure 8 pins total
                             mov     a, datapins             'get data pin base
                             wrpin   registered, datapins    'prepare data pins for address phase transfer
                             shr     a, #3                   'determine data pin group
                             and     a, #7                   'ignore the unwanted bits
                             or      a, #8
                             setnib  ximm8lut, a, #5         'setup bus group in streamer
-                            setnib  xrecvlo8, a, #5
                             setnib  xrecvdata, a, #5
                             setnib  xsenddata, a, #5
                             setnib  xsendimm, a, #5
-                            add     a, #1
-                            setnib  xrecvhi8, a, #5         ' increase port by one
  
                             ' setup device control pin states
                             setq2   #32-1                   'read 32 longs to LUTRAM
@@ -473,12 +470,13 @@ pinloop
                             getbyte clkpin, pinconfig, #1   'read CLK pin number
                             fltl    clkpin                  'disable Smartpin clock output mode
                             wrpin   clkconfig, clkpin       'set clk to Smartpin pulse mode output
-                            wxpin   #1, clkpin              'configure for 1 clocks between updates    
+                            wxpin   #1, clkpin              'configure for 1 clocks between updates
                             drvl    clkpin                  'set clk state low
                             waitx   c                       'delay
                             call    #hwinit                 'setup HW into QSPI mode
 pinlooptest
                             djnz    a, #pinloop
+                            setword xsendimm, #4, #0
 
                             ' setup the COG mailboxes and addresses 
                             rep     #2, #8                  'setup loop to patch mailbox addresses
@@ -748,11 +746,9 @@ continue_write_exec         execf   lockedwrites
 ' Variables
 
 ximm8lut        long    $20CF_0008              '8 nibble transfers via LUT to pins
-xrecvlo8        long    $E0C6_0001              '1 byte read from lo bus pins
-xrecvhi8        long    $E0C6_0001              '1 byte read from hi bus pins
-xrecvdata       long    $F0C0_0000              'arbitrary 16 bit reads from 16 bit bus pins
-xsenddata       long    $B0C0_0000              'arbitrary 16 bit writes from hub to pins
-xsendimm        long    $70C0_0002              'arbitrary 2x16 bit immediate writes from imm to pins
+xrecvdata       long    $E0C6_0000              'arbitrary 8 bit reads from 8 bit bus pins
+xsenddata       long    $A0C6_0000              'arbitrary 8 bit writes from hub to pins
+xsendimm        long    $60C6_0002              'arbitrary 4x8 bit immediate writes from imm to pins
 
 xfreq1          long    $80000000
 xfreq2          long    $40000000
@@ -905,7 +901,7 @@ lut_code
 ' routines to (re-)initialize PSRAM chip into QSPI mode from whatever it was before
 hwinit                      setxfrq xfreq2
                             pollxfi
-                            mov     pa, ##$5555FFFF         '$F5 - exit QSPI mode if we were in this mode
+                            mov     pa, ##$55FF             '$F5 - exit QSPI mode if we were in this mode
                             call    #sendqspi
                             mov     pa, ##$0FF00FF0         '$66 - reset enable
                             call    #sendspi
@@ -988,9 +984,9 @@ no_vect ' Invalid bank jump vectors
 
 r_burst                     mov     orighubsize, count      '       d      preserve the original transfer count
 r_single                    test    count wz                ' a b c |      test for RMW (z=1 if not RMW)
-                            mov     pattern, #%100110110    ' a b c |      setup future skip pattern
-            if_z            andn    pattern, #%100100000    ' | | c |      no need to rearrange long data
-                            setword xrecvdata, #2, #0       ' a b c |      2x16 bit transfers to read a long
+                            mov     pattern, #%1001010      ' a b c |      setup future skip pattern
+            if_z            andn    pattern, #%1001000      ' | | c |      no need to rearrange long data
+                            setword xrecvdata, #4, #0       ' a b c |      4x8 bit transfers to read a long
                             tjz     count, #noread_lut      ' | | | d      check for any bytes to send
 r_resume_burst              getnib  b, request, #0          ' a b c d e    get bank parameter LUT address
                             rdlut   b, b                    ' a b c d e    get bank limit/mask
@@ -1005,7 +1001,7 @@ p0                          shr     b, #17                  ' | | | d e    scale
 r_locked_burst              wrfast  xfreq1, hubdata         ' | | | d e f  setup streamer hub address for bursts
                             mov     c, count                ' | | | d e f  get count of bytes left to read
                             fle     c, limit wc             ' | | | d e f  enforce the burst limit
-                            mov     clks, #15 wc            ' a b c | | |  15 clocks to read a single long
+                            mov     clks, #17 wc            ' a b c | | |  17 clocks to read a single long
             if_c            mov     resume, continue_read   ' | | | d e f  burst read will continue
             if_nc           mov     resume, complete_rw     ' | | c d e f  burst/long read will complete
                             skipf   #%10000                 ' | | | d | |  extend skipf sequence for burst
@@ -1017,30 +1013,23 @@ r_locked_burst              wrfast  xfreq1, hubdata         ' | | | d e f  setup
 
                             ' fall through to read bursts
                         
-burst_read                  ' handle the page boundary by splitting any read bursts that cross it 
+burst_read                  ' handle the 2k page boundary by splitting any read bursts that cross it 
                             mov     d, addr1                'get start address
                             zerox   d, #(PAGE_BITS-1)       'only keep page LSBs
                             subr    d, pagesize             'figure out how many bytes remain before we hit the boundary
                             fle     c, d wc                 'compare this size to our transfer size and limit it
             if_c            mov     resume, continue_read   'and we will continue with a sub-burst again
                             mov     pattern, #0             'enable all by default
-                            testb   addr1, #1 wc            'test if start addr starts in second word
+                            testb   addr1, #0 wc            'test if start addr starts in odd byte
                             bitnc   pattern, #1             'enable delay cycle if so
-                            wrc     clks                    'and account for its clock cycle
-                            testb   addr1, #0 wc            'test if start addr starts on odd byte
-                            bitnc   pattern, #2             'add hi 8 transfer initially
-                            mov     d, c                    'get count of bytes to be read into HUB
-            if_c            sub     d, #1                   'minus 1 if start addr was odd
-                            shr     d, #1 wz                'divide by two bytes to work out 16 bit transfers
-                            addx    clks, d                 'account for this in the clock (with extra 8 bit cycle)
-                            setword xrecvdata, d, #0        'set the word transfer clocks needed in streamer
-                            bitz    pattern, #3             'adjust the pattern to include this
-                            testb   c, #0 xorc              'test for end address
-                            bitnc   pattern, #4             'include low 8 bit transfer if required
-                            addx    clks, #13               'account for 13 address+delay clocks + and low 8 bit transfer
+                            mov     clks, c                 'compute transfer clocks
+                            addx    clks, #13               'and account for the header
+                            setword xrecvdata, c, #0        'set the transfer clocks needed in streamer
+
 readcommon
                             mov     cmdaddr, addr1          'get start address of transfer
-                            shr     cmdaddr, #2             'align to 32 bit boundary
+                            shr     cmdaddr, #1             'convert to 16 bit address
+                            andn    cmdaddr, #1             'but aligned to 32 bit boundary
                             setbyte cmdaddr, #$EB, #3       'add quad read command
 
                             splitb  cmdaddr                 'reverse nibbles in address to match bus order
@@ -1061,13 +1050,11 @@ readcommon
                             waitxmt                         'wait until first command has completed before tri-stating
                             fltl    datapins                'safe to float the data bus, address has been sent by now
                             wrpin   regdatabus, datapins    'setup data bus inputs as registered or not for read timing control
-                            skipf   pattern                 'choose path below (? = dynamically executed)
-                                                            'Bursts Bytes Words Longs  RMW FromWrites
+                            skipf   pattern                 'choose path below (? = dyanmically executed)
+                                                            'Bursts Bytes Words Longs  RMW FromWrites 
                             setq    xfreq2                  '   a     b     c     d     e    f  restore sysclk/2 operation
                             xcont   #1, #0                  '   ?     |     |     |     |    |  skips over LSW
-                            xcont   xrecvhi8, #0            '   ?     |     |     |     |    |  1x8 bits on high 8 bit bus
-                            xcont   xrecvdata, #0           '   ?     b     c     d     e    f  nx16 bits on 16 bit bus
-                            xcont   xrecvlo8, #0            '   ?     |     |     |     |    |  1x8 bits on low 8 bit bus
+                            xcont   xrecvdata, #0           '   a     b     c     d     e    f  nx8 bits on 8 bit bus
                             call    resume                  '   a     |     |     d     |    |  chooses what to do next
                             waitxfi                         '   a     b     c     d     e    f  wait for streaming to finish
                             wrpin   registered, datapins    '   a     b     c     d     e    f  restore data pins for next transfer
@@ -1100,7 +1087,7 @@ readcommon
             if_nc           setword a, pb, #0               '         |    d
 writeback                   mov     pattern2, #%110111      'setup next skip pattern to send a single long and resume
                             mov     hubdata, a              'write a to PSRAM
-                            mov     wrclks, #10             '10 clocks to write a long
+                            mov     wrclks, #12             '12 clocks to write a long
                             mov     resume, complete_rw     'we'll complete the operation after this
                             jmp     #writecommon
 
@@ -1264,7 +1251,7 @@ w_resume_burst              mov     c, count                '  a b c d e f g h  
             if_c            mov     resume, continue_write  '  | | | | e f | h  this burst write will continue
             if_nc           mov     resume, complete_rw     '  | | | | e f | h  this burst write will complete
                             mov     a, hubdata              '  | | | | e f | h  save streamer hub addr
-                            mov     wrclks, #10             '  a b c d | | g |  prepare base clocks
+                            mov     wrclks, #12             '  a b c d | | g |  prepare base clocks
                             testb   a, #1 wc                '  a b c d | | g |  check if longs (c=1) or bytes/words (c=0)
                             mov     pattern2, singlelong    '  a b c d | | g |  setup skip pattern for single long write
             if_z_and_c      jmp     #writecommon            '  a b c d | | g |  optimized single long write
@@ -1305,7 +1292,7 @@ w_resume_burst              mov     c, count                '  a b c d e f g h  
                             
                             cmp     request, #%11110000 wc  'test for fill/burst (c=1 if fill, c=0 if burst)
             if_c            skipf   #%11110                 'if fill skip burst write stuff
-                            add     wrclks, #2              'we need to include 2 clocks for 2x16 bits
+                            add     wrclks, #4              'we need to include 4 clocks for 4x8 bits
                             sub     a, d                    ' |  (bursts only) subtract start address by offset to realign long
                             rdlong  d, a                    ' |  (bursts only) read first long in HUB RAM at this addr
                             add     a, #4                   ' |  (bursts only) increase source address by a long for later
@@ -1323,13 +1310,12 @@ header_done                 cmp     request, #%11110000 wc  'test for fill/burst
                             andn    pb, #3 wz               'determine the number of full long bytes left to send
                             tjz     pb, #body_done          'if no full longs, go send the trailing portion
                  
-            if_c            skipf   #%10010                 'for fills we can skip burst stuff
+                            add     wrclks, pb              'include this number of bytes as more clocks transitions
+            if_c            skipf   #%110                   'for fills we can skip burst stuff
             if_c            andn    pattern2, #$C           'enable rep loop instructions for fills in write pattern
-                            bitl    pattern2, #1            ' |  |  enable streamer instruction for bursts in write pattern
-                            shr     pb, #1                  ' |  b  compute word count for bursts
-                            add     wrclks, pb              ' |  b  include this number of words as more clocks
-                            setword xsenddata, pb, #0       ' |  |  setup streamer count for bursts
-                            shr     pb, #1                  ' |  b  compute how many long transfer repeats this is
+                            bitl    pattern2, #1            ' a  |  enable streamer instruction for bursts in write pattern
+                            setword xsenddata, pb, #0       ' a  |  setup streamer count for bursts
+                            shr     pb, #2                  ' a  b  compute how many long transfer repeats this is
 
 body_done                   and     d, #3                   'determine if any residual trailing bytes to send (0-3)
                             tjz     d, #trailer_done        'no trailer to send, we exit now
@@ -1360,7 +1346,7 @@ body_done                   and     d, #3                   'determine if any re
                             rdlong  trailer, hubscratch     'read external RAM data value
                             setq    pa                      'setup byte mask
                             muxq    trailer, d              'apply byte mask to data via muxq
-                            add     wrclks, #2              'increase by 2 more clocks
+                            add     wrclks, #4              'increase by 4 more clocks
                             bitl    pattern2, #5            'enable trailing bytes to be written (bursts)
                             bitl    pattern3, #0            'enable trailing bytes to be written (fills)
 
@@ -1368,7 +1354,8 @@ body_done                   and     d, #3                   'determine if any re
 trailer_done                rdfast  xfreq1, a               '(bursts, but harmless for fills) setup streamer source address
 
 writecommon                 mov     cmdaddr, addr1          'get start address of transfer
-                            shr     cmdaddr, #2             'align to 32 bit boundary
+                            shr     cmdaddr, #1             'convert to 16 bit address
+                            andn    cmdaddr, #1             'but on 32 bit boundary
                             setbyte cmdaddr, #$02, #3       'add quad write command
 
                             splitb  cmdaddr                 'reverse nibbles in address to match bus order
@@ -1384,12 +1371,12 @@ writecommon                 mov     cmdaddr, addr1          'get start address o
                             wypin   wrclks, clkpin          'start memory clock output 
                                                          
                             skipf   pattern2                '   B W L Burst FB FW FL RMW
-                            xcont   xsendimm, header        '   a b |   ?    ?  ?  ?  | ' send 32 bit immediate data as 2x16 bits 
-                            xcont   xsenddata, #0           '   | | |   ?    |  |  |  | ' send data from hub for bursts as 2nx16 bits
+                            xcont   xsendimm, header        '   a b |   ?    ?  ?  ?  | ' send 32 bit immediate data as 4x8 bits 
+                            xcont   xsenddata, #0           '   | | |   ?    |  |  |  | ' send data from hub for bursts as 4nx8 bits
                             rep     #1, pb                  '   | | |   |    ?  ?  ?  | ' repeat for bursts
-                            xcont   xsendimm, hubdata       '   | | c   |    ?  ?  ?  h ' send 32 bit fill data as 2x16 bits
+                            xcont   xsendimm, hubdata       '   | | c   |    ?  ?  ?  h ' send 32 bit fill data as 4x8 bits
                             skipf   pattern3 '%10011/%10010 '   | | |   |    e  f  g  | ' determine if trailer to be sent
-                            xcont   xsendimm, trailer       '   | | |   ?    ?  ?  ?  | ' send 32 bit immediate last data as 2x16 bits
+                            xcont   xsendimm, trailer       '   | | |   ?    ?  ?  ?  | ' send 32 bit immediate last data as 4x8 bits
                             call    resume                  '   | | |   d    |  |  |  h ' bursts check what to do next while streaming
                             waitxfi                         '   a b c   d    e  f  g  h ' wait for streamer to end
                             fltl    datapins                '   a b c   d    e  f  g  h ' tri-state DATA bus
@@ -1429,23 +1416,23 @@ continue_fill               add     c, addr1                'add bytes to destin
                 long    0[1024-32-$]                'align position to last 32 long boundary in LUTRAM
                 org 1024-32
 
-' mapping table from 0-F into 0000-FFFF on output bus (nibble replication)
-                long $0000
-                long $1111
-                long $2222
-                long $3333
-                long $4444
-                long $5555
-                long $6666
-                long $7777
-                long $8888
-                long $9999
-                long $aaaa
-                long $bbbb
-                long $cccc
-                long $dddd
-                long $eeee
-                long $ffff
+' mapping table from 0-F into 00-FF on output bus (nibble replication)
+                long $00
+                long $11
+                long $22
+                long $33
+                long $44
+                long $55
+                long $66
+                long $77
+                long $88
+                long $99
+                long $aa
+                long $bb
+                long $cc
+                long $dd
+                long $ee
+                long $ff
 
 applymask             
                             rczr    pa wcz                  'get cz flags from 2 lsbs of address
@@ -1461,11 +1448,11 @@ applymask
                             ret     wcz 
 
 readlong                    wrfast  xfreq1, hubscratch      'setup read to hub scratch
-                            setword xrecvdata, #2, #0       'read 2x16 words
-                            mov     clks, #15               '15 read clocks
-                            mov     pattern, #%110110       'setup read skip pattern
+                            setword xrecvdata, #4, #0       'read 4x8 bits 
+                            mov     clks, #17               '17 read clocks
+                            mov     pattern, #%1010         'setup read skip pattern
                             jmp     #readcommon             'read then return directly to caller
-
+        
         fit 1024
 
 '--------------------------------------------------------------------------------------------------

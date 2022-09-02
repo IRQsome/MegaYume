@@ -38,7 +38,10 @@ c : "libc.a"
 a : "fsadapter.c"
 
 #ifdef USE_PSRAM4
-exmem : "psram4drv.spin2"
+exmem : "psram4drv-dualCE.spin2"
+#endif
+#ifdef USE_PSRAM8
+exmem : "psram8drv.spin2"
 #endif
 #ifdef USE_PSRAM16
 exmem : "psram16drv.spin2"
@@ -571,7 +574,7 @@ long[banks][0] := 512<<16 + (PSRAM_DELAY-9)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_PSRAM4
 long[banks][0] := 128<<16 + (PSRAM_DELAY-9)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
-long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
+long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8 + PSRAM_SELECT<<16
 #elseifdef USE_HYPER
 long[banks][0] := 128<<16 + (HYPER_DELAY-7)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + 6<<25 ' Latency????
