@@ -16,6 +16,7 @@ INBAND_RESET = true
 
 ' Enable one of these to select the exmem type to use
 #define USE_PSRAM16
+'#define USE_PSRAM8
 '#define USE_PSRAM4
 '#define USE_HYPER
 
