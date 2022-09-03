@@ -531,6 +531,13 @@ if smdrom
       djnf i,#.lp
   end
 
+CON
+#ifdef USE_PSRAM_SLOW
+PSRAM_TIMEOFFSET = 11 ' I guess???
+#else
+PSRAM_TIMEOFFSET = 9
+#endif
+
 PRI exmem_start() | tmp,cogs,banks
 
 tmp := __builtin_alloca(8*4)
@@ -547,6 +554,9 @@ long[tmp][2] := HYPER_RESET < 32 ? 1<<HYPER_RESET : 0
 long[tmp][3] := HYPER_RESET >= 32 ? 1<<HYPER_RESET : 0
 #elseifdef USE_PSRAM_EITHER
 long[tmp][1] := (PSRAM_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
+#ifdef USE_PSRAM_SLOW
+long[tmp][1] |= 1<<exmem.SLOWCLK_BIT | 1<<exmem.CLKSEL_BIT
+#endif
 long[tmp][2] := 0
 long[tmp][3] := 0 
 
@@ -570,10 +580,13 @@ longfill(cogs+4,-1<<16,7)
 longfill(banks,negx,32)
 
 #ifdef USE_PSRAM16
-long[banks][0] := 512<<16 + (PSRAM_DELAY-9)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
+long[banks][0] := 512<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
+#elseifdef USE_PSRAM8
+long[banks][0] := 256<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
+long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8 + PSRAM_SELECT<<16
 #elseifdef USE_PSRAM4
-long[banks][0] := 128<<16 + (PSRAM_DELAY-9)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
+long[banks][0] := 128<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8 + PSRAM_SELECT<<16
 #elseifdef USE_HYPER
 long[banks][0] := 128<<16 + (HYPER_DELAY-7)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22

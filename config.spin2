@@ -30,6 +30,9 @@ PSRAM_DELAY = 13
 PSRAM_SYNC_CLOCK = false
 PSRAM_SYNC_DATA = false
 
+' Uncomment for slower memory clock
+'#define USE_PSRAM_SLOW
+
 ' If true, machine type as read back from external memory
 ' Is printed before starting game 
 READBACK_TEST = false
@@ -132,6 +135,9 @@ PINPUT_P2_MODE   = -1
 '' Ignore stuff below
 
 #ifdef USE_PSRAM4
+#define USE_PSRAM_EITHER
+#endif
+#ifdef USE_PSRAM8
 #define USE_PSRAM_EITHER
 #endif
 #ifdef USE_PSRAM16

@@ -144,6 +144,31 @@ video_line_ctr          long 0
 video_frame_ctr         long 0
 
 
+CON ' Memory constants
+
+#ifdef USE_PSRAM16
+PSRAM_PAGESIZE = 0 addbits 9
+PSRAM_ASHIFT = 0
+#endif
+
+#ifdef USE_PSRAM8
+PSRAM_PAGESIZE = 0 addbits 8
+PSRAM_ASHIFT = 1
+#endif
+
+#ifdef USE_PSRAM4
+PSRAM_PAGESIZE = 0 addbits 7
+PSRAM_ASHIFT = 2
+#endif
+
+#ifdef USE_PSRAM_SLOW
+PSRAM_CLKDIV = 3
+PSRAM_CYSHL = 0
+#else
+PSRAM_CLKDIV = 2
+PSRAM_CYSHL = 1
+#endif
+
 
 
 CON ' MotoKore 68000 constants
@@ -872,6 +897,11 @@ mk_psram_pinfield long PSRAM_BASE addpins 15
 mk_psram_addr_cmd long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_LUT + 8
 mk_psram_read_cmd long (PSRAM_BASE<<17)|X_WRITE_ON| X_16P_2DAC8_WFWORD
 #endif
+#ifdef USE_PSRAM8
+mk_psram_pinfield long PSRAM_BASE addpins 7
+mk_psram_addr_cmd long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_LUT + 8
+mk_psram_read_cmd long (PSRAM_BASE<<17)|X_WRITE_ON| X_8P_1DAC8_WFBYTE
+#endif
 #ifdef USE_PSRAM4
 mk_psram_pinfield long PSRAM_BASE addpins 3
 mk_psram_addr_cmd long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_4DAC1 + 8
@@ -884,7 +914,15 @@ mk_hyper_read_cmd  long (HYPER_BASE<<17)|X_WRITE_ON| X_8P_1DAC8_WFBYTE
 #endif
 
 mk_nco_fast   long $8000_0000
+#ifdef USE_PSRAM_EITHER
+#ifdef USE_PSRAM_SLOW
+mk_nco_slow   long $2AAA_AAAB
+#else
 mk_nco_slow   long $4000_0000
+#endif
+#else
+mk_nco_slow   long $4000_0000
+#endif
 
 mk_cogvar_start
 
@@ -978,7 +1016,7 @@ mk_readrom
 .readrom
               ret wcz
         '}
-#ifdef USE_PSRAM16
+#ifdef USE_PSRAM_EITHER
 mk_readrom
               zerox pa,mk_romio_zerox ' Limit to ROM size
               locktry #ROM_LOCK wc
@@ -987,7 +1025,7 @@ mk_readrom
               mov mk_romio_tmp2,pa
               add mk_romio_tmp2,mk_romio_length
               mov mk_romio_tmp1,pa
-              bith mk_romio_tmp1,#0 addbits 9
+              bith mk_romio_tmp1,#PSRAM_PAGESIZE
               add mk_romio_tmp1,#1 ' mk_romio_tmp1 has start of next page
               cmpsub mk_romio_tmp2,mk_romio_tmp1 wcz ' IF C, mk_romio_tmp2 now has longs that cross over boundary
         if_c  sub mk_romio_length,mk_romio_tmp2
@@ -1001,77 +1039,42 @@ mk_readrom
               ret wcz
 
 mk_psram_readburst
-              mov mk_memtmp0,#(8+PSRAM_WAIT)*2
-              shl mk_romio_length,#2
+              mov mk_memtmp0,#(8+PSRAM_WAIT)<<PSRAM_CYSHL
+              shl mk_romio_length,#PSRAM_ASHIFT+1+PSRAM_CYSHL
               add mk_memtmp0,mk_romio_length
+#ifndef USE_PSRAM16
+              shl pa,#PSRAM_ASHIFT ' convert long address to native address (becomes no-op with USE_PSRAM16)
+#endif
               setbyte pa,#$EB,#3
               ' Reverse nibble order
               splitb  pa
               rev     pa
               movbyts pa, #%%0123
               mergeb  pa
+#ifdef USE_PSRAM_SLOW
+              drvl  #PSRAM_CLK ' must be 2 ops before xinit
+#endif
               drvh  #PSRAM_SELECT
               drvl  mk_psram_pinfield
               xinit mk_psram_addr_cmd,pa
               wypin mk_memtmp0,#PSRAM_CLK
               setq mk_nco_fast
-              xcont #PSRAM_WAIT*2+PSRAM_DELAY,#0
-              shr mk_romio_length,#1
+              xcont #PSRAM_WAIT*PSRAM_CLKDIV+PSRAM_DELAY,#0
+#ifndef USE_PSRAM_SLOW
+              shr mk_romio_length,#PSRAM_CYSHL ' Becomes no-op with USE_PSRAM_SLOW
+#endif
               setword mk_psram_read_cmd,mk_romio_length,#0
               waitxmt
               fltl mk_psram_pinfield
               setq mk_nco_slow
               xcont mk_psram_read_cmd,#0
               waitxfi
+#ifdef USE_PSRAM_SLOW
+              drvl #PSRAM_SELECT
+        _ret_ fltl #PSRAM_CLK
+#else
         _ret_ drvl #PSRAM_SELECT
 #endif
-#ifdef USE_PSRAM4
-mk_readrom
-              zerox pa,mk_romio_zerox ' Limit to ROM size
-              locktry #ROM_LOCK wc
-        if_nc jmp #$-1
-              wrfast  mk_bit31,mk_romio_target
-              mov mk_romio_tmp2,pa
-              add mk_romio_tmp2,mk_romio_length
-              mov mk_romio_tmp1,pa
-              bith mk_romio_tmp1,#0 addbits 7
-              add mk_romio_tmp1,#1 ' mk_romio_tmp1 has start of next page
-              cmpsub mk_romio_tmp2,mk_romio_tmp1 wcz ' IF C, mk_romio_tmp2 now has longs that cross over boundary
-        if_c  sub mk_romio_length,mk_romio_tmp2
-              call #mk_psram4_readburst
-   if_nc_or_z lockrel #ROM_LOCK
-   if_nc_or_z ret wcz
-              mov pa,mk_romio_tmp1
-              mov mk_romio_length,mk_romio_tmp2
-              call #mk_psram4_readburst
-              lockrel #ROM_LOCK
-              ret wcz
-
-mk_psram4_readburst
-              mov mk_memtmp0,#(8+PSRAM_WAIT)*2
-              shl mk_romio_length,#4
-              add mk_memtmp0,mk_romio_length
-              shl pa,#2 ' 4 bit memory is byte-oriented
-              setbyte pa,#$EB,#3
-              ' Reverse nibble order
-              splitb  pa
-              rev     pa
-              movbyts pa, #%%0123
-              mergeb  pa
-              drvh  #PSRAM_SELECT
-              drvl  mk_psram_pinfield
-              xinit mk_psram_addr_cmd,pa
-              wypin mk_memtmp0,#PSRAM_CLK
-              setq mk_nco_fast
-              xcont #PSRAM_WAIT*2+PSRAM_DELAY,#0
-              shr mk_romio_length,#1
-              setword mk_psram_read_cmd,mk_romio_length,#0
-              waitxmt
-              fltl mk_psram_pinfield
-              setq mk_nco_slow
-              xcont mk_psram_read_cmd,#0
-              waitxfi
-        _ret_ drvl #PSRAM_SELECT
 #endif
 #ifdef USE_HYPER
 mk_readrom
@@ -2763,9 +2766,14 @@ mk_init
 
 #ifdef USE_PSRAM_EITHER
               fltl #PSRAM_CLK
+#ifdef USE_PSRAM_SLOW
+              wrpin ##P_PULSE|P_OE|(PSRAM_SYNC_CLOCK ? P_SYNC_IO : P_ASYNC_IO), #PSRAM_CLK
+              wxpin ##3 + (2<<16), #PSRAM_CLK
+#else
               wrpin ##P_TRANSITION|P_OE|(PSRAM_SYNC_CLOCK ? P_SYNC_IO : P_ASYNC_IO), #PSRAM_CLK
               wxpin #1, #PSRAM_CLK
               drvl #PSRAM_CLK
+#endif
 
               wrpin ##P_INVERT_OUTPUT,#PSRAM_SELECT
               drvl #PSRAM_SELECT
@@ -5541,32 +5549,11 @@ zk_read_rombyte
               rdlong zk_memtmp3,pa
               wrlong zk_memtmp3,zk_romio_area_ptr
         '}
-#ifdef USE_PSRAM16
+#ifdef USE_PSRAM_EITHER
               wrfast  zk_bit31,zk_romio_area_ptr
-              setbyte pa,#$EB,#3
-              splitb  pa
-              rev     pa
-              movbyts pa, #%%0123
-              mergeb  pa
-              locktry #ROM_LOCK wc
-        if_nc jmp #$-1
-              drvh  #PSRAM_SELECT
-              drvl  zk_psram_pinfield
-              xinit zk_psram_addr_cmd,pa
-              wypin #(8+PSRAM_WAIT)*2 + 4,#PSRAM_CLK
-              setq zk_nco_fast
-              xcont #PSRAM_WAIT*2+PSRAM_DELAY,#0
-              waitxmt
-              fltl zk_psram_pinfield
-              setq zk_nco_slow
-              xcont zk_psram_read_cmd,#0
-              waitxfi
-              drvl #PSRAM_SELECT
-              lockrel #ROM_LOCK
+#ifndef USE_PSRAM16
+              shl pa,#PSRAM_ASHIFT ' convert long address to native address (becomes no-op with USE_PSRAM16)
 #endif
-#ifdef USE_PSRAM4
-              wrfast  zk_bit31,zk_romio_area_ptr
-              shl pa,#2
               setbyte pa,#$EB,#3
               splitb  pa
               rev     pa
@@ -5574,18 +5561,24 @@ zk_read_rombyte
               mergeb  pa
               locktry #ROM_LOCK wc
         if_nc jmp #$-1
+#ifdef USE_PSRAM_SLOW
+              drvl  #PSRAM_CLK ' must be 2 ops before xinit
+#endif
               drvh  #PSRAM_SELECT
               drvl  zk_psram_pinfield
               xinit zk_psram_addr_cmd,pa
-              wypin #(8+PSRAM_WAIT)*2 + 16,#PSRAM_CLK
+              wypin #(8+PSRAM_WAIT+(2<<PSRAM_ASHIFT))<<PSRAM_CYSHL,#PSRAM_CLK
               setq zk_nco_fast
-              xcont #PSRAM_WAIT*2+PSRAM_DELAY,#0
+              xcont #PSRAM_WAIT*PSRAM_CLKDIV+PSRAM_DELAY,#0
               waitxmt
               fltl zk_psram_pinfield
               setq zk_nco_slow
               xcont zk_psram_read_cmd,#0
               waitxfi
               drvl #PSRAM_SELECT
+#ifdef USE_PSRAM_SLOW
+              fltl  #PSRAM_CLK
+#endif
               lockrel #ROM_LOCK
 #endif
 #ifdef USE_HYPER
@@ -5640,6 +5633,11 @@ zk_psram_pinfield long PSRAM_BASE addpins 15
 zk_psram_addr_cmd long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_LUT + ($8<<16) + 8
 zk_psram_read_cmd long (PSRAM_BASE<<17)|X_WRITE_ON| X_16P_2DAC8_WFWORD + 2
 #endif
+#ifdef USE_PSRAM8
+zk_psram_pinfield long PSRAM_BASE addpins 7
+zk_psram_addr_cmd long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_LUT + ($8<<16) + 8
+zk_psram_read_cmd long (PSRAM_BASE<<17)|X_WRITE_ON| X_8P_1DAC8_WFBYTE + 4
+#endif
 #ifdef USE_PSRAM4
 zk_psram_pinfield long PSRAM_BASE addpins 3
 zk_psram_addr_cmd long (PSRAM_BASE<<17)|X_PINS_ON | X_IMM_8X4_4DAC1 + 8
@@ -5652,7 +5650,15 @@ zk_hyper_read_cmd  long (HYPER_BASE<<17)|X_WRITE_ON| X_8P_1DAC8_WFBYTE + 4
 #endif
 
 zk_nco_fast   long $8000_0000
+#ifdef USE_PSRAM_EITHER
+#ifdef USE_PSRAM_SLOW
+zk_nco_slow   long $2AAA_AAAB
+#else
 zk_nco_slow   long $4000_0000
+#endif
+#else
+zk_nco_slow   long $4000_0000
+#endif
 
 zk_flags      long 0
 zk_accu       long 0
