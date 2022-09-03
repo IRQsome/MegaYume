@@ -14,6 +14,7 @@ Since this is the most common config, these are the default values in config.spi
 ```spin
 ' Enable one of these to select the exmem type to use
 #define USE_PSRAM16
+'#define USE_PSRAM8
 '#define USE_PSRAM4
 '#define USE_HYPER
 
@@ -26,17 +27,41 @@ PSRAM_WAIT  = 5
 PSRAM_DELAY = 13
 PSRAM_SYNC_CLOCK = false
 PSRAM_SYNC_DATA = false
+
+' Uncomment for slower memory clock
+'#define USE_PSRAM_SLOW
 ```
 
 ### Rayslogic 96MB PSRAM board (on P2EVAL, basepin 0)
 
-Reliable operation impossible (would need 8bit/slow support)
+```spin
+' Enable one of these to select the exmem type to use
+'#define USE_PSRAM16
+#define USE_PSRAM8
+'#define USE_PSRAM4
+'#define USE_HYPER
+
+' For PSRAM (either type)
+PSRAM_CLK = 8 addpins 1
+PSRAM_SELECT = 10
+PSRAM_BASE = 0
+PSRAM_BANKS = 6 ' Only used to stop further banks from interfering
+
+PSRAM_WAIT  = 5
+PSRAM_DELAY = 17
+PSRAM_SYNC_CLOCK = true
+PSRAM_SYNC_DATA = true
+
+' Uncomment for slower memory clock
+#define USE_PSRAM_SLOW
+```
 
 ### Rayslogic 24MB PSRAM board (on P2EVAL, basepin 48)
 
 ```spin
 ' Enable one of these to select the exmem type to use
 '#define USE_PSRAM16
+'#define USE_PSRAM8
 #define USE_PSRAM4
 '#define USE_HYPER
 
@@ -50,6 +75,9 @@ PSRAM_WAIT  = 5
 PSRAM_DELAY = 15
 PSRAM_SYNC_CLOCK = true
 PSRAM_SYNC_DATA = true
+
+' Uncomment for slower memory clock
+'#define USE_PSRAM_SLOW
 ```
 
 ### Parallax HyperBus accessory (on P2EVAL, basepin 0)
@@ -57,6 +85,7 @@ PSRAM_SYNC_DATA = true
 ```spin
 ' Enable one of these to select the exmem type to use
 '#define USE_PSRAM16
+'#define USE_PSRAM8
 '#define USE_PSRAM4
 #define USE_HYPER
 
@@ -115,6 +144,10 @@ Enables `P_SYNC_IO` mode on the data bus. This is a sort-of "half step backwards
 ### PSRAM_SYNC_CLOCK
 
 Enables `P_SYNC_IO` mode on the clock pin. This is a further timing adjustment. In most cases you can leave it on true.
+
+### USE_PSRAM_SLOW
+
+Enables a slower bus speed (CPU clock divided by 3 instead of 2). This is useful for setups with a large number of banks.
 
 ### READBACK_TEST
 
