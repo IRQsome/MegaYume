@@ -970,6 +970,7 @@ mk_eacache    res 1 ' remapped EA
 DAT ' MotoKore 68000 LUT resident code
 mk_lutbase
               org 512
+#ifdef USE_PSRAM16
               long $0000
               long $1111
               long $2222
@@ -986,6 +987,26 @@ mk_lutbase
               long $DDDD
               long $EEEE
               long $FFFF
+#elseifdef USE_PSRAM8
+              long $00
+              long $11
+              long $22
+              long $33
+              long $44
+              long $55
+              long $66
+              long $77
+              long $88
+              long $99
+              long $AA
+              long $BB
+              long $CC
+              long $DD
+              long $EE
+              long $FF
+#else
+              long 0[16]
+#endif
 
 mk_readrom_ea32
               mov mk_romio_length,#2
@@ -5926,6 +5947,7 @@ zk_lutbase
               long zk_rst                               ' $FF: RST 38h
 
               ' PSRAM helper table. Must be at $300
+#ifdef USE_PSRAM16
               long $0000
               long $1111
               long $2222
@@ -5942,6 +5964,26 @@ zk_lutbase
               long $DDDD
               long $EEEE
               long $FFFF
+#elseifdef USE_PSRAM8
+              long $00
+              long $11
+              long $22
+              long $33
+              long $44
+              long $55
+              long $66
+              long $77
+              long $88
+              long $99
+              long $AA
+              long $BB
+              long $CC
+              long $DD
+              long $EE
+              long $FF
+#else
+              long 0[16]
+#endif
 
 
 zk_rolla      mov zk_tmp8,zk_accu
