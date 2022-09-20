@@ -49,6 +49,16 @@ See the issues section of this GitHub repository for known issues.
 - You may RESET the game by holding Start+Up for a few seconds or hitting Ctrl+R
 - You may freeze the CPU by hitting Pause/Break - this is a debugging feature and may mess things up.
 
+
+If you want to download some freeware ROMs to play around with, here's a couple:
+
+ - Bad Apple demo: https://www.dropbox.com/s/waa4c2cje0tegon/BadApple.bin?dl=1
+ - L'Abbaye des Morts: https://playonretro.itch.io/labbaye-des-morts-megadrivegenesis-por-002
+ - Old Towers: https://retrosouls.itch.io/old-towers
+ - Alter Ego: https://retrosouls.itch.io/alterego16bit
+ - Runes: https://cannibalcat.itch.io/runes
+ - 240p Test Suite (test pattern generator): https://artemiourbina.itch.io/240p-test-suite
+
   -= FILES =-
   -----------
 
