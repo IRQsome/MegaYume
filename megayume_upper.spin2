@@ -13,7 +13,7 @@ CON ' Header
 ''
 VERSION_MAJOR = 1
 VERSION_MINOR = 0
-VERSION_RC    = 2
+VERSION_RC    = -1
 
 '' Note: this sucks. not anymore.
 '' Perhaps more important note: use the included build.sh.
