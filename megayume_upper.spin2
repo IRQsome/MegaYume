@@ -12,8 +12,8 @@ CON ' Header
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
 VERSION_MAJOR = 1
-VERSION_MINOR = 0
-VERSION_RC    = -1
+VERSION_MINOR = 1
+VERSION_RC    = 0
 
 '' Note: this sucks. not anymore.
 '' Perhaps more important note: use the included build.sh.

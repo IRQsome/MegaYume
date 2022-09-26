@@ -6348,6 +6348,10 @@ zk_init
 
               wrword #$100,#zbus_request ' Also z80_reset
 
+              ' Clear RAM
+              setq ##(8192/4)-1
+              wrlong #0,##@z80_ram
+
               ' Reset PSG here
               setq #(PSG_SIZE/4)-1
               wrlong #15,##psg_regbase
