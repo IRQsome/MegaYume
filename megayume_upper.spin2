@@ -673,6 +673,8 @@ MENUKEY_DOWN  = %0000_0010
 MENUKEY_LEFT  = %0000_0100
 MENUKEY_RIGHT = %0000_1000
 
+MENUKEYS_DIRECTIONS = %1111
+
 MENUKEY_CONFIRM = %0001_0000
 MENUKEY_BACK    = %0010_0000
 
@@ -760,7 +762,7 @@ position := 0
 dirty := true
 repeatkey := 0
 
-repeat while poll_menukeys()
+repeat while poll_menukeys() & !MENUKEYS_DIRECTIONS
 
 repeat
   if dirty\false
