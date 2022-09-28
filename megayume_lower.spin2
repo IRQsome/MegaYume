@@ -3162,6 +3162,10 @@ io_pl1_padread
         if_0x setq #%11_0000
         if_11 setq #%00_1111
         if_not_10 muxq mk_memvalue,mk_memtmp1
+        ' Needed to fix SGDK games
+              cmp mk_memtmp3,#PAD_6BUTTON wz
+        if_z  cmp mk_memtmp2,#0 wz
+        if_01 andn mk_memvalue,#%1111
 
               and mk_memvalue,#$7F
               xor mk_memvalue,#$7F
@@ -3199,6 +3203,10 @@ io_pl2_padread
         if_0x setq #%11_0000
         if_11 setq #%00_1111
         if_not_10 muxq mk_memvalue,mk_memtmp1
+        ' Needed to fix SGDK games
+              cmp mk_memtmp3,#PAD_6BUTTON wz
+        if_z  cmp mk_memtmp2,#0 wz
+        if_01 andn mk_memvalue,#%1111
 
               and mk_memvalue,#$7F
               xor mk_memvalue,#$7F
