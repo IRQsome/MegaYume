@@ -58,6 +58,8 @@ long smdrom,romsize,romfile,srmfile
 
 long exmem_mailbox[8*3]
 
+long exmem_struct
+
 byte cpu_cog,z80_cog,exmem_cog
 
 alignl
@@ -540,7 +542,9 @@ PSRAM_TIMEOFFSET = 9
 
 PRI exmem_start() | tmp,cogs,banks
 
-tmp := c.malloc(8*4+8*4+32*4)
+ifnot exmem_struct
+  exmem_struct := c.malloc(8*4+8*4+32*4)
+tmp := exmem_struct
 cogs := tmp+8*4
 banks := cogs+8*4
 
