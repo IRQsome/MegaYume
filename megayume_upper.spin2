@@ -540,9 +540,9 @@ PSRAM_TIMEOFFSET = 9
 
 PRI exmem_start() | tmp,cogs,banks
 
-tmp := __builtin_alloca(8*4)
-cogs := __builtin_alloca(8*4)
-banks := __builtin_alloca(32*4)
+tmp := c.malloc(8*4+8*4+32*4)
+cogs := tmp+8*4
+banks := cogs+8*4
 
 if exmem_cog
   return
