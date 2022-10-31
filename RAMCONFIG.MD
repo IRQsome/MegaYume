@@ -108,9 +108,16 @@ HYPER_SYNC_DATA = false
 ### USE_PSRAM4 / USE_PSRAM8 / USE_PSRAM16 / USE_HYPER
 
 One of these defines must be enabled to select the RAM type and bus width used (and thus the number of RAM chips in parallel).
+
  USE_PSRAM4 -> single PSRAM chip
+
+ USE_PSRAM8 -> dual PSRAM chips
+
  USE_PSRAM16 -> quad PSRAM chips
+
  USE_HYPER -> single HyperRAM chip
+
+**Note that HyperRAM uses separate constants to PSRAM, but they act the same.**
 
 ### PSRAM_CLK
 
@@ -123,7 +130,7 @@ PSRAM select pin. This can be any pin.
 ### PSRAM_BANKS
 
 Number of PSRAM banks to use. The second bank will use PSRAM_SELECT **+ 1** as its select pin (and so on for the third, etc).
-Note that in any case, MegaYume only requires one bank, any additional ones will not be used.
+Note that in any case, MegaYume only requires one bank, any additional ones will not be used, but this value must still be set correctly to avoid interference from the unused banks.
 
 ### PSRAM_BASE
 
@@ -131,7 +138,7 @@ PSRAM data bus base pin. This must be a multiple of 8 (or 4 if USE_PSRAM4) and t
 
 ### PSRAM_WAIT
 
-Number of data bit periods between address send and data return. **Leave this value at 5 unless you have a different type of memory chip.**
+Number of data bit periods between address send and data return. **Leave this value at 5 unless you have a different type of memory chip. (22 for HYPER_WAIT)**
 
 ### PSRAM_DELAY
 
@@ -151,4 +158,4 @@ Enables a slower bus speed (CPU clock divided by 3 instead of 2). This is useful
 
 ### READBACK_TEST
 
-If enabled, the machine type (i.e. the "SEGA GENESIS"/"SEGA MEGADRIVE") string from the ROM is displayed on screen before a game starts. This is for debugging memory timing issues that stem from the disconnect between the memory driver code used by upper and lower code. If the lower code can't correctly read from RAM, the game will simply not run, whereas read failures for upper code will result in more nuanced failure. If in doubt, try playing a game with a saving feature. If MegaYume fails to create/open the save file, it has failed to identify the ROM header (or the header doesn't properly declare the SRAM)
+If enabled, the machine type (i.e. the "SEGA GENESIS"/"SEGA MEGADRIVE") string from the ROM is displayed on screen before a game starts. This is for debugging memory timing issues that stem from the disconnect between the memory driver code used by upper and lower code (but can also be used as an aid in memory timing calibration for new hardware setups). If the lower code can't correctly read from RAM, the game will simply not run, whereas read failures for upper code will result in more nuanced failure. If in doubt, try playing a game with a saving feature. If MegaYume fails to create/open the save file, it has failed to identify the ROM header (or the header doesn't properly declare the SRAM)
