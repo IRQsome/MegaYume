@@ -114,7 +114,7 @@ do_opening()
 msgbox_simple(@"Mounting storage...")
 _mount(@"/sd",c._vfs_open_sdcard())
 'clearplane(MENU_PLANEA)
-if a.get_type(@"/sd/MEGAYUME")==1
+if a.get_type_for_path(@"/sd/MEGAYUME")==1
   c.strncpy(@curdir,@"/sd/MEGAYUME/",MAX_PATH)
 else
   c.strncpy(@curdir,@"/sd/",MAX_PATH)
@@ -131,7 +131,7 @@ repeat
 #endif
     'msgbox_simple(@tmppath)
     'waitkey(MENUKEY_CONFIRM)
-    case a.get_type(@tmppath)
+    case a.get_type_for_path(@tmppath)
       0:
         msgbox_simple(@"WTF?")
         waitkey(MENUKEY_CONFIRM)
@@ -899,11 +899,9 @@ repeat
   tmp:= c.readdir(dir)
   ifnot tmp
     quit
-  c.strncpy(@tmppath,@curdir,MAX_PATH)
-  c.strncat(@tmppath,a.get_name(tmp),MAX_PATH)
-  ifnot type := a.get_type(@tmppath)
+  ifnot type := a.get_type_for_dirent(tmp)
     next
-  fileenter(a.get_name(tmp),type,got)
+  fileenter(a.get_name_for_dirent(tmp),type,got)
   ifnot type == 1 or valid_rom_extension(got)
     next
   if ++got == DIRENT_MAX
