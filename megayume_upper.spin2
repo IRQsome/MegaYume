@@ -34,7 +34,7 @@ OBJ
 
 video : "MegaVGA"
 usb : "1CogKbM_rja3b"
-c : "libc.a"
+c : "libc"
 a : "fsadapter.c"
 
 #ifdef USE_PSRAM4
@@ -340,11 +340,11 @@ if c.fread(tmp,512,1,romfile) == 512
   if long[tmp+$100] <> SEGA_FOURCC and word[tmp+8] == $BBAA
     smdrom := 1
 
-c.fseek(romfile,0,SEEK_END)
+c.fseek(romfile,0,c.SEEK_END)
 romsize := c.ftell(romfile)
 if smdrom
   romsize -= 512
-c.fseek(romfile,smdrom?512:0,SEEK_SET)
+c.fseek(romfile,smdrom?512:0,c.SEEK_SET)
 
 return smdrom
 
@@ -414,7 +414,7 @@ if sram_is_nvram
       waitkey(MENUKEY_CONFIRM)
 
 PRI flush_sram()
-c.fseek(srmfile,0,SEEK_SET)
+c.fseek(srmfile,0,c.SEEK_SET)
 c.fwrite(SRAM_BASE,1,$1_0000,srmfile)
 c.fflush(srmfile)
 
@@ -1372,7 +1372,3 @@ VDPFLAG_LACED_DOUBLERES = 2
 VDPFLAG_LACED_OUTPUT = 1
 VDPFLAG_H40 = 0
 
-CON
-SEEK_SET  = 0
-SEEK_CUR  = 1
-SEEK_END  = 2
