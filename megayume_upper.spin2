@@ -537,7 +537,7 @@ CON
 #ifdef USE_PSRAM_SLOW
 PSRAM_TIMEOFFSET = 11 ' I guess???
 #else
-PSRAM_TIMEOFFSET = 9
+PSRAM_TIMEOFFSET = 8
 #endif
 
 PRI exmem_start() | tmp,cogs,banks
