@@ -348,12 +348,6 @@ c.fseek(romfile,smdrom?512:0,c.SEEK_SET)
 
 return smdrom
 
-PRI eswap32(val) : r
-r := val
-asm
-  movbyts r,#%%0123
-endasm
-
 PRI init_sram(srmpath) | tmp,sram_is_nvram,open_existing
 
 ' init to disabled state
@@ -372,8 +366,8 @@ exmem_read(tmp,$100,256,false)
 
 if long[tmp+$00] == SEGA_FOURCC and word[tmp+$B0] == ("R"+"A"<<8) and byte[tmp+$B3] == $20
   sram_is_nvram := byte[tmp+$B2].[6]
-  long[$E8] := eswap32(long[tmp+$B4]) zerox 23 ' sram start
-  long[$EC] := eswap32(long[tmp+$B8]) zerox 23 ' sram end
+  long[$E8] := __builtin_bswap32(long[tmp+$B4]) zerox 23 ' sram start
+  long[$EC] := __builtin_bswap32(long[tmp+$B8]) zerox 23 ' sram end
 
 '' Sanity checks and hacks
 if long[$EC]-long[$E8] +> $FFFF ' end before start or larger than 64k
