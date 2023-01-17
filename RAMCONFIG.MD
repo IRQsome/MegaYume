@@ -155,7 +155,3 @@ Enables `P_SYNC_IO` mode on the clock pin. This is a further timing adjustment. 
 ### USE_PSRAM_SLOW
 
 Enables a slower bus speed (CPU clock divided by 3 instead of 2). This is useful for setups with a large number of banks.
-
-### READBACK_TEST
-
-If enabled, the machine type (i.e. the "SEGA GENESIS"/"SEGA MEGADRIVE") string from the ROM is displayed on screen before a game starts. This is for debugging memory timing issues that stem from the disconnect between the memory driver code used by upper and lower code (but can also be used as an aid in memory timing calibration for new hardware setups). If the lower code can't correctly read from RAM, the game will simply not run, whereas read failures for upper code will result in more nuanced failure. If in doubt, try playing a game with a saving feature. If MegaYume fails to create/open the save file, it has failed to identify the ROM header (or the header doesn't properly declare the SRAM)

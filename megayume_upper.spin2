@@ -62,6 +62,8 @@ long exmem_struct
 
 byte cpu_cog,z80_cog,exmem_cog
 
+byte header_buf[$100]
+
 alignl
 byte curdir[MAX_PATH+1],tmppath[MAX_PATH+1]
 
@@ -156,13 +158,6 @@ repeat
     exmem_start()
     'settile(MENU_PLANEA,0,0,"L"+ATTR_PAL2<<11)
     do_load_rom()
-
-    if READBACK_TEST
-      exmem_read(MKRAM_BASE,$100,16,false)
-      byte[MKRAM_BASE+16] := 0
-      msgbox_simple(MKRAM_BASE)
-      waitkey(MENUKEY_CONFIRM)
-    
 
 
     byte[$E1].[6 addbits 1] := detect_region()
@@ -361,8 +356,7 @@ if srmfile
   waitkey(MENUKEY_CONFIRM)
   c.fclose(srmfile\0)
 
-tmp := __builtin_alloca(256)
-exmem_read(tmp,$100,256,false)
+tmp := @header_buf
 
 if long[tmp+$00] == SEGA_FOURCC and word[tmp+$B0] == ("R"+"A"<<8) and byte[tmp+$B3] == $20
   sram_is_nvram := byte[tmp+$B2].[6]
@@ -415,8 +409,7 @@ c.fflush(srmfile)
 
 PRI detect_region() : region | chr,tmp, got, i, valid
 
-tmp := __builtin_alloca(256)
-exmem_read(tmp,$100,256,false)
+tmp := @header_buf
 if long[tmp+$00] <> SEGA_FOURCC
   ' No SEGA header, assume the worst
   return REGION_PREFERRED
@@ -468,11 +461,9 @@ return REGION_DOMESTIC_50HZ ' The nameless land named OHA...
 
 PRI detect_6button_issue() : got_issue | ptr,serial
 ' detect games that don't work with 6 button pads by comparing serial numbers
-serial := __builtin_alloca(16)
-exmem_read(serial,$180,16,false)
 ptr := @sixbutton_issue_serials
 repeat (@sixbutton_issue_serials_end-@sixbutton_issue_serials)/14
-  ifnot c.memcmp(serial,ptr,14)
+  ifnot c.memcmp(@header_buf+$80,ptr,14)
     return true
   ptr+=14
 return false
@@ -498,6 +489,9 @@ repeat
   settiles(MENU_PLANEA,7+x+1,7+25,14,14," "+ATTR_PAL2<<11)
   rom_read_block(MKRAM_BASE+tmp&$4000)
   exmem_write(tmp,MKRAM_BASE+tmp&$4000,$4000,true)
+  if tmp==0
+    ' Buffer ROM Header
+    longmove(@header_buf,MKRAM_BASE+$100,$100/4)
 while (tmp+=$4000)<romsize
 exmem_sync()
 

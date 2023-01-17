@@ -34,10 +34,6 @@ PSRAM_SYNC_DATA = false
 ' Uncomment for slower memory clock
 '#define USE_PSRAM_SLOW
 
-' If true, machine type as read back from external memory
-' Is printed before starting game 
-READBACK_TEST = false
-
 ' For HyperRAM
 HYPER_ACCESSORY = 0 ' Base pin for P2EVAL HyperRAM board
 HYPER_CLK    =  8+HYPER_ACCESSORY
