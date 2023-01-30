@@ -2842,6 +2842,8 @@ mk_init
 mk_hub_hotreset
               wrbyte #0,#atn_command
               mov mk_sr,##MK_SUPER_MASK + (7<<8)
+              mov mk_ihook1,#0
+              mov mk_ihook2,#0
               'call #mk_check_core_integrity
               ' initialize PC and SP
               mov mk_virtualpc,#0
