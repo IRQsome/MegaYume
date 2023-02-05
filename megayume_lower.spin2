@@ -16,7 +16,7 @@ CON ' Header
 
 #include "config.spin2"
 
-CON ' Configuration constants (todo: runtime configurtion?)
+CON ' Configuration constants (UNUSED WITH CURRENT UPPER CODE)
 
 '' Console region to be reported.
 '' Note that a 60Hz system is always emulated,
@@ -52,9 +52,7 @@ UPPER_LOAD = $5_0000
 
 DAT ' startup code & zero page
               org
-              ' reboot into
-              'debug(uhex_long_array(#$10,#4))
-              'hubset ##$2003_0000
+              ' reboot into upper
               coginit #0,##UPPER_LOAD
               'coginit #HUBEXEC,##mk_init
               orgh $14
@@ -8188,26 +8186,5 @@ save_ram
               byte 0[$1_0000] ' Non-volatile SRAM
 
 
-
-{
-              orgh $4_0000
-fake_rom
-              'file "hello.bin"
-              'file "test.bin"
-              'file "shtest.bin"
-              'file "sgdk_image.bin"
-              'file "sgdk_fixstr.bin"
-              'file "sgdk_cube.bin"
-              'file "sgdk_scaling.bin"
-              'file "sgdk_wobble.bin"
-              'file "flicky.bin"
-              'file "columns.bin"
-              'file "ishido.bin"
-              'file "mspacman.bin"
-              'file "vctest.bin"
-              'file "wintest.bin"
-              'file "memtest_68k.bin"
-              byte 0[@fake_rom+$2_0000-$] ' 68k ROM
-}
               orgh UPPER_LOAD
               file "megayume_upper.binary"
