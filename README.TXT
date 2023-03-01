@@ -12,9 +12,7 @@
 
 MegaYume is a SEGA Mega Drive / Genesis emulator for
 Parallax P2 micro-controllers with appropriate memory expansions
-(Currently supported: HyperRAM, 4xQPI PSRAM, 1x QPI PSRAM).
-
-MegaYume is beta-quality software, please keep that in mind.
+(Currently supported: HyperRAM, 4xQPI PSRAM, 2xQPI PSRAM, 1x QPI PSRAM).
 
 Features include:
   - Low latency framebuffer-less high-level emulation
