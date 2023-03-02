@@ -26,6 +26,9 @@ Features include:
 See the issues section of this GitHub repository for known issues.
 
 
+Forum thread, chronicalling development and other interesting info: https://forums.parallax.com/discussion/173381/console-emulation/p1
+
+
   -= HOW TO USE =-
   ----------------
 
