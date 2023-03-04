@@ -54,13 +54,15 @@ VAR
 
 long repeatkey,repeatnext
 
-long smdrom,romsize,romfile,srmfile
+long romsize,romfile,srmfile
 
 long exmem_mailbox[8*3]
 
 long exmem_struct
 
 byte cpu_cog,z80_cog,exmem_cog
+byte smdrom
+byte got_parameter
 
 byte header_buf[$100]
 
@@ -111,7 +113,11 @@ cogspin(NEWCOG,pinput_cog(),@pinput_stack)
   
 menu_vdp_init()
 #ifndef DIRECT_BOOT
-do_opening()
+if USE_ARGV && long[$FC000] == ("A" + "R"<<8 + "G"<<16 + "v"<<24) && word[$FC004] <> 0
+  got_parameter := true
+  long[$FC000] := 0 ' Destroy signature
+else
+  do_opening()
 #endif
 msgbox_simple(@"Mounting storage...")
 _mount(@"/sd",c._vfs_open_sdcard())
@@ -128,7 +134,10 @@ repeat
 #ifdef DIRECT_BOOT
     c.strncpy(@tmppath,@DIRECT_BOOT,MAX_PATH)
 #else
-    ifnot do_filechooser()
+    if got_parameter
+      c.strncpy(@tmppath,$FC004,MAX_PATH)
+      got_parameter := false
+    elseifnot do_filechooser()
       next
 #endif
     'msgbox_simple(@tmppath)
