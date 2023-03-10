@@ -1963,7 +1963,16 @@ mk_hub_reset
               jmp #$
 
 mk_hub_nop
-              waitx #40 ' make NOP slow - backport from NeoYume
+              waitx #32 ' make NOP slow - backport from NeoYume
+              ' Mega special hack to make SEGA logo in Sonic 1 sound correct.
+              ' Detect NOP + DBF loop and apply extra delay
+              rdlong mk_optmp0,ptra
+              movbyts mk_optmp0,#%%2301
+              andn mk_optmp0,#7 ' mask out register no
+              cmp mk_optmp0,##((-4)<<16)|%0101_0001_11001_000 wz
+              cmps mk_romque_left,#2 wc
+        if_01 waitx #100
+
               cmp mk_opword,##$4E71 wz
         if_z  ret
               debug("weird NOP ? ",uhex_word(mk_opword),uhex_long(mk_virtualpc))
