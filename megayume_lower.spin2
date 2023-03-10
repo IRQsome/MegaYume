@@ -8041,7 +8041,8 @@ opn_portwrite
 
 opn_doreset
               loc ptrb,#opn_regbase
-              setq #6-1
+              wrlong #$80,ptrb++ ' reduce DAC DC click
+              setq #5-1
               wrlong #0,ptrb++
               mov zk_memtmp0,#6
 .chlp
