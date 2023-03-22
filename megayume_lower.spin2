@@ -2812,7 +2812,8 @@ mk_init
 
               wrpin ##(HYPER_SYNC_DATA ? P_SYNC_IO : P_ASYNC_IO),#HYPER_BASE addpins 7
 
-              drvh #HYPER_RESET
+              modc HYPER_RESET < 0 ? _clr : _set wc
+        if_c  drvh #HYPER_RESET
 
               setxfrq mk_nco_slow
               waitx #200
