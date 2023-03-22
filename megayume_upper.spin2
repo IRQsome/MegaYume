@@ -542,7 +542,7 @@ if exmem_cog
 long[tmp][0] := clkfreq
 #ifdef USE_HYPER
 long[tmp][1] := (HYPER_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
-long[tmp][2] := HYPER_RESET < 32 ? 1<<HYPER_RESET : 0
+long[tmp][2] := (HYPER_RESET < 32 && HYPER_RESET > 0) ? 1<<HYPER_RESET : 0
 long[tmp][3] := HYPER_RESET >= 32 ? 1<<HYPER_RESET : 0
 #elseifdef USE_PSRAM_EITHER
 long[tmp][1] := (PSRAM_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
