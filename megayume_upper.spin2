@@ -135,7 +135,7 @@ repeat
     'waitkey(MENUKEY_CONFIRM)
     case a.get_type_for_path(@tmppath)
       0:
-        msgbox_simple(@"WTF?")
+        msgbox_simple(@"Path not found?")
         waitkey(MENUKEY_CONFIRM)
         next
       1:
