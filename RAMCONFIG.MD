@@ -97,7 +97,8 @@ HYPER_SELECT = 12+HYPER_ACCESSORY
 HYPER_BASE   =  0+HYPER_ACCESSORY
 HYPER_RESET  = 15+HYPER_ACCESSORY
 
-HYPER_WAIT  = 22
+HYPER_LATENCY  = 6
+HYPER_WAIT  = HYPER_LATENCY*4 - 2
 HYPER_DELAY = 13
 HYPER_SYNC_CLOCK = false
 HYPER_SYNC_DATA = false
@@ -138,7 +139,9 @@ PSRAM data bus base pin. This must be a multiple of 8 (or 4 if USE_PSRAM4) and t
 
 ### PSRAM_WAIT
 
-Number of data bit periods between address send and data return. **Leave this value at 5 unless you have a different type of memory chip. (22 for HYPER_WAIT)**
+Number of data bit periods between address send and data return. **Leave this value at 5 unless you have a different type of memory chip.**
+
+For HyperRAM, please set this indirectly through `HYPER_LATENCY`, which is the default latency setting as documented in your memory data sheet.
 
 ### PSRAM_DELAY
 
@@ -154,4 +157,4 @@ Enables `P_SYNC_IO` mode on the clock pin. This is a further timing adjustment. 
 
 ### USE_PSRAM_SLOW
 
-Enables a slower bus speed (CPU clock divided by 3 instead of 2). This is useful for setups with a large number of banks.
+Enables a slower bus speed (CPU clock divided by 3 instead of 2). This is useful for setups with a large number of banks. Not available for HyperRAM.
