@@ -504,6 +504,8 @@ byte "GM T-48036 -00",IOMODE_3BUTTON ' Ms. Pacman
 byte "GM T-95026-00 ",IOMODE_3BUTTON ' Sunset Riders
 byte "GM MK-1210 -00",IOMODE_3BUTTON ' Mario Lemieux Hockey
 byte "GM T-48216 -00",IOMODE_MULTITAP ' Gauntlet 4
+byte "GM T-48213 -00",IOMODE_MULTITAP ' Gauntlet 4 (alt)
+byte "GM BMAP-001-00",IOMODE_6BUTTON ' Xeno Crisis (bad multitap support)
 iomode_special_serials_end
 
 PRI do_load_rom() | tmp,x
