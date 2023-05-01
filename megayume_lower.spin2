@@ -28,7 +28,7 @@ REGION_DOMESTIC_60HZ = %00 '' Japan
 REGION_OVERSEAS_50HZ = %11 '' Europe, Australia
 REGION_DOMESTIC_50HZ = %01 '' Narnia, Gensokyo, Oz, Bielefeld
 
-#0,IOMODE_3BUTTON,IOMODE_6BUTTON,IOMODE_MULTITAP
+#0,IOMODE_3BUTTON,IOMODE_6BUTTON,IOMODE_MULTITAP,IOMODE_MULTITAP_3BUTTON
 #0,PAD_NONE,PAD_6BUTTON,PAD_3BUTTON
 
 CON ' Common constants
@@ -2964,8 +2964,8 @@ iog_write8_internal
 
               rdbyte pa,#io_mode
               sub pa,#IOMODE_MULTITAP
-    if_10     tjz pa,#.multitap_latch
-              tjz pa,#.multitap_shift
+    if_10     tjns pa,#.multitap_latch
+              tjns pa,#.multitap_shift
 
     if_not_10 ret wcz ' Return if not falling edge
               ' increment state
@@ -3007,6 +3007,10 @@ iog_write8_internal
         if_ae altsn mk_memtmp3,#mk_memtmp0
         if_ae setnib pb
         if_ae add mk_memtmp3,#1
+              ' Extra stupid hack for Micro Machines
+              ' (bugs out with 6 button pads)
+              rdbyte pb,#io_mode
+        if_e  cmp pb,#IOMODE_MULTITAP wz
               ' get MXYZ
               getnib pb,pa,#2
         if_e  altsn mk_memtmp3,#mk_memtmp0

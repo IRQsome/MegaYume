@@ -506,6 +506,8 @@ byte "GM MK-1210 -00",IOMODE_3BUTTON ' Mario Lemieux Hockey
 byte "GM T-48216 -00",IOMODE_MULTITAP ' Gauntlet 4
 byte "GM T-48213 -00",IOMODE_MULTITAP ' Gauntlet 4 (alt)
 byte "GM BMAP-001-00",IOMODE_6BUTTON ' Xeno Crisis (bad multitap support)
+byte "GM T-120096-50",IOMODE_MULTITAP_3BUTTON ' Micro Machines 2
+byte "GM 00000000-00",IOMODE_MULTITAP_3BUTTON ' Micro Machines 96
 iomode_special_serials_end
 
 PRI do_load_rom() | tmp,x
@@ -680,7 +682,7 @@ ZINT_LOCK = 10 ' Z80 VBlank IRQ is sorta independent
 
 STATIC_LOCKS = decod ROM_LOCK | decod HINT_LOCK | decod VINT_LOCK | decod ZINT_LOCK
 
-#0,IOMODE_3BUTTON,IOMODE_6BUTTON,IOMODE_MULTITAP
+#0,IOMODE_3BUTTON,IOMODE_6BUTTON,IOMODE_MULTITAP,IOMODE_MULTITAP_3BUTTON
 #0,PAD_NONE,PAD_6BUTTON,PAD_3BUTTON
 
 REGION_OVERSEAS_60HZ = %10 '' Americas
