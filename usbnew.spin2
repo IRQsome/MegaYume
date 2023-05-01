@@ -2824,7 +2824,9 @@ hpad_translate
               add       ptra,#5
 
         ' A kingdom for a macro assembler...
-              rdbyte    htmp,ptra++
+        ' special MegaYume hack: distinguish 3-button controller 
+              rdbyte    htmp,ptra++             wz
+        if_z  setnib    retval,#2,#EMUPAD_TYPE_NIBBLE
         if EMUPAD_BT0_BIT > 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
@@ -2848,13 +2850,15 @@ hpad_translate
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT3_BIT
         end
-              rdbyte    htmp,ptra++
+              rdbyte    htmp,ptra++             wz
+        if_z  setnib    retval,#2,#EMUPAD_TYPE_NIBBLE
         if EMUPAD_BT4_BIT > 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT4_BIT
         end
-              rdbyte    htmp,ptra++
+              rdbyte    htmp,ptra++             wz
+        if_z  setnib    retval,#2,#EMUPAD_TYPE_NIBBLE
         if EMUPAD_BT5_BIT > 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc

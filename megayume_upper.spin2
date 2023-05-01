@@ -179,9 +179,7 @@ repeat
 
 
     byte[$E1].[6 addbits 1] := detect_region()
-    tmp := detect_6button_issue() ? PAD_3BUTTON : PAD_6BUTTON
-    byte[$47] := tmp
-    byte[$4B] := HAVE_PLAYER2 ? tmp : PAD_NONE
+    byte[$50] := detect_iomode()
 
     ' remove extension from tmppath
     tmp := strsize(@tmppath)
@@ -479,23 +477,34 @@ if got.[REGION_OVERSEAS_50HZ]
 
 return REGION_DOMESTIC_50HZ ' The nameless land named OHA...
 
-PRI detect_6button_issue() : got_issue | ptr,serial
-' detect games that don't work with 6 button pads by comparing serial numbers
-ptr := @sixbutton_issue_serials
-repeat (@sixbutton_issue_serials_end-@sixbutton_issue_serials)/14
+PRI detect_iomode() : mode | ptr,serial
+' detect games that don't work with 6 button pads
+' or don't properly declare multitap compatibility
+' by comparing serial numbers
+ptr := @iomode_special_serials
+repeat (@iomode_special_serials_end-@iomode_special_serials)/14
   ifnot c.memcmp(@header_buf+$80,ptr,14)
-    return true
-  ptr+=14
-return false
+    return byte[ptr+14]
+  ptr+=15
+
+' detect multitap support using header
+if long[@header_buf+$00] == SEGA_FOURCC
+  ptr := @header_buf+$90
+  repeat 16
+    if byte[ptr++] == "4"
+      return IOMODE_MULTITAP
+
+return IOMODE_6BUTTON
 
 DAT
 '' Oddly, not all of the games that are listed online as being 6-button-incompatible
 '' actually misbehave in emulation. Perhaps my 6 button state machine is more robust?
-sixbutton_issue_serials
-byte "GM T-48036 -00" ' Ms. Pacman
-byte "GM T-95026-00 " ' Sunset Riders
-byte "GM MK-1210 -00" ' Mario Lemieux Hockey
-sixbutton_issue_serials_end
+iomode_special_serials
+byte "GM T-48036 -00",IOMODE_3BUTTON ' Ms. Pacman
+byte "GM T-95026-00 ",IOMODE_3BUTTON ' Sunset Riders
+byte "GM MK-1210 -00",IOMODE_3BUTTON ' Mario Lemieux Hockey
+byte "GM T-48216 -00",IOMODE_MULTITAP ' Gauntlet 4
+iomode_special_serials_end
 
 PRI do_load_rom() | tmp,x
 
@@ -669,7 +678,8 @@ ZINT_LOCK = 10 ' Z80 VBlank IRQ is sorta independent
 
 STATIC_LOCKS = decod ROM_LOCK | decod HINT_LOCK | decod VINT_LOCK | decod ZINT_LOCK
 
-#0,PAD_NONE,PAD_3BUTTON,PAD_6BUTTON
+#0,IOMODE_3BUTTON,IOMODE_6BUTTON,IOMODE_MULTITAP
+#0,PAD_NONE,PAD_6BUTTON,PAD_3BUTTON
 
 REGION_OVERSEAS_60HZ = %10 '' Americas
 REGION_DOMESTIC_60HZ = %00 '' Japan
@@ -834,9 +844,12 @@ repeat
               draw_shiftjis_string(MKRAM_BASE+$C170,VRAM_BASE+$3000+(11*16+1)*32,1,2,16)
               draw_shiftjis_string(@"ROM Serial:",VRAM_BASE+$3000+12*16*32,1,2,16)
               draw_shiftjis_string(MKRAM_BASE+$C180,VRAM_BASE+$3000+(13*16+1)*32,1,2,16-2)
-            draw_shiftjis_string(smdrom?@"Super Magic Drive dump":@"Raw ROM image",VRAM_BASE+$3000+14*16*32,1,2,32)
+              draw_shiftjis_string(@"Devices:",VRAM_BASE+$3000+14*16*32,1,2,16)
+              draw_shiftjis_string(MKRAM_BASE+$C190,VRAM_BASE+$3000+(15*16+1)*32,1,2,16)
+
+            draw_shiftjis_string(smdrom?@"Super Magic Drive dump":@"Raw ROM image",VRAM_BASE+$3000+16*16*32,1,2,32)
             c.sprintf(@tmppath,@"ROM Size: %d",romsize)
-            draw_shiftjis_string(@tmppath,VRAM_BASE+$3000+(15*16+0)*32,1,2,32)
+            draw_shiftjis_string(@tmppath,VRAM_BASE+$3000+(17*16+0)*32,1,2,32)
 
 
   'settile(MENU_PLANEA,0,0,"0"+ATTR_PAL2<<11)

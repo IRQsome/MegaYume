@@ -28,7 +28,8 @@ REGION_DOMESTIC_60HZ = %00 '' Japan
 REGION_OVERSEAS_50HZ = %11 '' Europe, Australia
 REGION_DOMESTIC_50HZ = %01 '' Narnia, Gensokyo, Oz, Bielefeld
 
-#0,PAD_NONE,PAD_3BUTTON,PAD_6BUTTON
+#0,IOMODE_3BUTTON,IOMODE_6BUTTON,IOMODE_MULTITAP
+#0,PAD_NONE,PAD_6BUTTON,PAD_3BUTTON
 
 CON ' Common constants
 
@@ -74,16 +75,16 @@ io_pl1_padw   long 0 ' < $40 (populated by upper code)
 io_pl2_padw   long 0 ' < $44 (populated by upper code)
 io_pl3_padw   long 0 ' < $48 (populated by upper code)
 io_pl4_padw   long 0 ' < $4C (populated by upper code)
+io_mode       byte IOMODE_6BUTTON ' < $50
 io_pl1_dir    byte 0
 io_pl1_out    byte 0
 io_pl1_state  byte 0
-io_pl1_type   byte PAD_6BUTTON ' < $47 (populated by upper code)
 io_pl2_dir    byte 0
 io_pl2_out    byte 0
 io_pl2_state  byte 0
-io_pl2_type   byte PAD_6BUTTON ' < $4B (populated by upper code)
-
+alignl
 io_6btn_timeout long 0 ' Timeout for 6 button state machine
+io_multitap_data long 0,0,0
 
 
 zbus_request  byte $00 ' \/ These two can be read as a word
@@ -2961,6 +2962,11 @@ iog_write8_internal
               testb mk_memtmp1,#6+8 wz ' new out bit
               testbn mk_memtmp1,#6 orz ' if dir is low, pullup
 
+              rdbyte pa,#io_mode
+              sub pa,#IOMODE_MULTITAP
+    if_10     tjz pa,#.multitap_latch
+              tjz pa,#.multitap_shift
+
     if_not_10 ret wcz ' Return if not falling edge
               ' increment state
               rdbyte mk_memtmp2,#io_pl1_state
@@ -2970,6 +2976,68 @@ iog_write8_internal
               rdlong mk_memtmp0,#io_6btn_timeout
               getct mk_memtmp2
               addct1 mk_memtmp2,mk_memtmp0
+              ret wcz
+
+.multitap_latch
+              '' Latch all multitap data
+              '' Nibble 0 is $0
+              '' Nibbles 1..2 are $F
+              '' Nibbles 3..6 are pad type
+              '' Control data is packed
+              '' Remaining nibbles are zero
+              mov mk_memtmp0,##$FF0
+              mov mk_memtmp1,#0
+              mov mk_memtmp2,#0
+              mov ptrb,#io_pl1_padw
+              mov mk_memtmp3,#7 ' data write position
+              mov mk_memvalue,#3 ' abuse mk_memvalue as loop counter and type write pos
+.multitap_latch_loop
+              rdlong pa,ptrb++
+              getnib pb,pa,#7
+              cmp pb,#1 wcz
+        if_ae add pb,#$D ' 6 button is E, 3 button is F, none is 0
+              altsn mk_memvalue,#mk_memtmp0
+              setnib pb
+              ' get D-pad (already in bottom nibble of pa)
+        if_ae altsn mk_memtmp3,#mk_memtmp0
+        if_ae setnib pa
+        if_ae add mk_memtmp3,#1
+              ' get SACB
+              getnib pb,pa,#1
+        if_ae altsn mk_memtmp3,#mk_memtmp0
+        if_ae setnib pb
+        if_ae add mk_memtmp3,#1
+              ' get MXYZ
+              getnib pb,pa,#2
+        if_e  altsn mk_memtmp3,#mk_memtmp0
+        if_e  setnib pb
+        if_e  add mk_memtmp3,#1
+         
+              incmod mk_memvalue,#3+3 wc
+        if_nc jmp #.multitap_latch_loop
+              
+              setq #2
+              wrlong mk_memtmp0,#io_multitap_data
+              ret wcz
+.multitap_shift
+              ' Check for clock edge
+              testb mk_memtmp0,#5+8 wc ' old out bit
+              testbn mk_memtmp0,#5 orc ' if dir is low, pullup
+              testb mk_memtmp1,#5+8 wz ' new out bit
+              testbn mk_memtmp1,#5 orz ' if dir is low, pullup
+    if_c_eq_z ret wcz ' No clock
+              
+              setq #2
+              rdlong mk_memtmp0,#io_multitap_data
+
+              shr mk_memtmp0,#4
+              setnib mk_memtmp0,mk_memtmp1,#7
+              shr mk_memtmp1,#4
+              setnib mk_memtmp1,mk_memtmp2,#7
+              shr mk_memtmp2,#4
+
+              setq #2
+              wrlong mk_memtmp0,#io_multitap_data
               ret wcz
 
 .pl2_setout
@@ -3141,21 +3209,28 @@ iog_read8
 
 
 io_pl1_padread
+              mov mk_memvalue,#$7F ' Default state for no controller
+              rdword mk_memtmp0,#io_pl1_dir ' out state in top byte
+
               pollct1 wc ' if timer elapsed, reset controller state machine
         if_c  wrbyte #0,#io_pl1_state
 
-              rdword mk_memtmp0,#io_pl1_dir ' out state in top byte
-              mov mk_memvalue,#$7F
-              rdbyte mk_memtmp3,#io_pl1_type wz
-        if_z  jmp #.done ' No controller: all pins pulled up
+              rdbyte pa,#io_mode
+              cmp pa,#PAD_6BUTTON wcz
+        if_a  jmp #.multitap
+
+              rdlong mk_memtmp1,#io_pl1_padw
+              getnib mk_memtmp3,mk_memtmp1,#7 ' Autodetect Pad type from EmuPad report
+              tjz mk_memtmp3,#.done ' No controller: all pins pulled up
+        if_b  mov mk_memtmp3,#PAD_3BUTTON ' If IOMODE_3BUTTON, force 3 button
+
               rdbyte mk_memtmp2,#io_pl1_state
               cmp mk_memtmp3,#PAD_6BUTTON wz
         if_z  cmp mk_memtmp2,#3 wz ' Z set -> read 6btn data
               testb mk_memtmp0,#6+8 wc ' TH out bit
               testbn mk_memtmp0,#6 orc ' if TH dir bit not set, pull up
 
-              rdword mk_memvalue,#io_pl1_padw
-              mov mk_memtmp1,mk_memvalue
+              mov mk_memvalue,mk_memtmp1
               'debug("padrd ",uhex_word_(mk_memtmp0,mk_memvalue),uhex_byte_(mk_memtmp2,mk_memtmp3))
 
         if_0x or mk_memvalue,#%1100
@@ -3180,24 +3255,43 @@ io_pl1_padread
               muxq mk_memvalue,pa
               'debug("padv ",uhex_byte_(mk_memvalue))
               ret wcz
-
+.multitap
+              testb mk_memtmp0,#6+8 wc ' TH out bit
+              testbn mk_memtmp0,#6 orc ' if dir is low, pullup
+        if_c  mov mk_memvalue,#%0011 ' multitap signature
+        if_nc rdlong mk_memvalue,#io_multitap_data ' current shift val in bottom nibble
+        if_nc xor mk_memvalue,#%1111
+              bith mk_memvalue,#5 addbits 1 ' TH/TR pullup
+              testb mk_memtmp0,#5+8 wc ' TR out bit
+              testbn mk_memtmp0,#5 orc ' if dir is low, pullup
+              bitc mk_memvalue,#4 ' TL follows TR
+              zerox mk_memvalue,#6 ' mask gunk off
+              debug("multitap read: ",uhex_byte(mk_memvalue),uhex_word(mk_memtmp0),uhex_long_array(#io_multitap_data,#3))
+              jmp #.done
 
 io_pl2_padread
+              mov mk_memvalue,#$7F ' Default state for no controller
+              rdword mk_memtmp0,#io_pl2_dir ' out state in top byte
+
               pollct2 wc ' if timer elapsed, reset controller state machine
         if_c  wrbyte #0,#io_pl2_state
 
-              rdword mk_memtmp0,#io_pl2_dir ' out state in top byte
-              mov mk_memvalue,#$7F
-              rdbyte mk_memtmp3,#io_pl2_type wz
-        if_z  jmp #.done ' No controller: all pins pulled up
+              rdbyte pa,#io_mode
+              cmp pa,#PAD_6BUTTON wcz
+        if_a  jmp #.done ' Multitap handles everything through port 1
+
+              rdlong mk_memtmp1,#io_pl2_padw
+              getnib mk_memtmp3,mk_memtmp1,#7 ' Autodetect Pad type from EmuPad report
+              tjz mk_memtmp3,#.done ' No controller: all pins pulled up
+        if_b  mov mk_memtmp3,#PAD_3BUTTON ' If IOMODE_3BUTTON, force 3 button
+
               rdbyte mk_memtmp2,#io_pl2_state
               cmp mk_memtmp3,#PAD_6BUTTON wz
         if_z  cmp mk_memtmp2,#3 wz ' Z set -> read 6btn data
               testb mk_memtmp0,#6+8 wc ' TH out bit
               testbn mk_memtmp0,#6 orc ' if TH dir bit not set, pull up
 
-              rdword mk_memvalue,#io_pl2_padw
-              mov mk_memtmp1,mk_memvalue
+              mov mk_memvalue,mk_memtmp1
 
         if_0x or mk_memvalue,#%1100
         if_01 or mk_memvalue,#%1111
