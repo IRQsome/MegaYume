@@ -70,8 +70,10 @@ _vram_ptr               long @vdp_ram  ' < $3C
 
               orgh $40
               ' control bit format is %MXYZ_SACB_RLDU
-io_pl1_padw   word 0 ' < $40 (populated by upper code)
-io_pl2_padw   word 0 ' < $42 (populated by upper code)
+io_pl1_padw   long 0 ' < $40 (populated by upper code)
+io_pl2_padw   long 0 ' < $44 (populated by upper code)
+io_pl3_padw   long 0 ' < $48 (populated by upper code)
+io_pl4_padw   long 0 ' < $4C (populated by upper code)
 io_pl1_dir    byte 0
 io_pl1_out    byte 0
 io_pl1_state  byte 0
@@ -92,7 +94,7 @@ opn_register  word $000 ' selected OPN2 register
 opn_timerAflag byte 0
 opn_timerBflag byte 0
 
-              orgh $60
+              orgh $70
 
 ' registers loaded into render cog
 vdp_registers

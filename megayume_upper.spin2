@@ -33,7 +33,16 @@ HEAPSIZE = 1024*8
 OBJ
 
 video : "MegaVGA"
-usb : "1CogKbM_rja3b"
+                '' A = BT3, B = BT2, C = BT1, X = BT4, Y = BT0, Z = BT5
+usb : "usbnew" | ACTIVITY_LED = -1, ERROR_LED = -1, {USB_BASE_PIN = USB0_BASEPIN,}  ...
+                 EMUPAD_MAX_DEV = 4, ...
+                 EMUPAD_UP_BIT = 0,EMUPAD_DOWN_BIT = 1,EMUPAD_LEFT_BIT = 2,EMUPAD_RIGHT_BIT = 3, ...
+                 EMUPAD_BT0_BIT = 9, EMUPAD_BT1_BIT = 5, EMUPAD_BT2_BIT = 4, EMUPAD_BT3_BIT = 6, ...
+                 EMUPAD_BT4_BIT = 10, EMUPAD_BT5_BIT = 8, EMUPAD_BT6_BIT = -1, EMUPAD_BT7_BIT = -1, ...
+                 EMUPAD_BT8_BIT = 11, EMUPAD_BT9_BIT = 7
+
+padmap: "padmap_parser"
+
 c : "libc"
 a : "fsadapter.c"
 
@@ -92,7 +101,7 @@ org
 end
 
 ' setup video driver
-video.start($F8,$64,long[$20],VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC,VIDEO_SUBMODE) '
+video.start($F8,$70+4,long[$20],VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC,VIDEO_SUBMODE) '
 
 ' setup OPN2/PSG
 coginit(HUBEXEC_NEW,long[$30],0)
@@ -102,19 +111,25 @@ coginit(HUBEXEC_NEW,long[$30],0)
 coginit(COGEXEC_NEW,long[$24],0)
 coginit(COGEXEC_NEW,long[$28],0)
 
+
+menu_vdp_init()
+msgbox_simple(@"Mounting storage...")
+_mount(@"/sd",c._vfs_open_sdcard())
 #ifdef INPUT_USE_USB
-usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
+'usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
+usb.set_emupad_ptr($40)
+usb.set_basepin(USB0_BASEPIN)
+tmp := c.fopen(@"/sd/PADMAP.TXT",@"r")
+if tmp
+  padmap.parse(usb.get_emupad_rules(),usb.EMUPAD_MAX_RULES,@c.fgetc,tmp,@"megayume")
+  c.fclose(tmp)
+usb.start()
 #elseifdef INPUT_USE_PINS
 cogspin(NEWCOG,pinput_cog(),@pinput_stack)
 #endif
-
-  
-menu_vdp_init()
 #ifndef DIRECT_BOOT
 do_opening()
 #endif
-msgbox_simple(@"Mounting storage...")
-_mount(@"/sd",c._vfs_open_sdcard())
 'clearplane(MENU_PLANEA)
 if a.get_type_for_path(@"/sd/MEGAYUME")==1
   c.strncpy(@curdir,@"/sd/MEGAYUME/",MAX_PATH)
@@ -200,6 +215,7 @@ bytefill(MKRAM_BASE,0,$1_0000)
 bytefill(VRAM_BASE,0,$1_0000)
 
 #ifdef INPUT_USE_USB
+{
 ' Keyboard to gamepad map
 usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
 usb.setEmuPadMapping( 1,usb.KEY_DOWN)           ' Down
@@ -227,6 +243,7 @@ usb.setEmuPadMapping(24,usb.KEY_L)              ' Z
 usb.setEmuPadMapping(25,usb.KEY_K)              ' Y
 usb.setEmuPadMapping(26,usb.KEY_J)              ' X
 usb.setEmuPadMapping(27,usb.KEY_H)              ' MODE
+}
 #endif
 
 ' setup Z80
@@ -257,7 +274,7 @@ repeat
   else
     inband_trig := 0
 
-  tmp:=(usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_R)) or inband_trig == 1
+  tmp:=((usb.keystate(usb.KEY_LCTRL)||usb.keystate(usb.KEY_RCTRL)) and usb.keystate(usb.KEY_R)) or inband_trig == 1
   if tmp and not did_reset
     byte[$E2] := 255
     cogatn(decod cpu_cog)
@@ -272,7 +289,7 @@ repeat
       cogatn(decod cpu_cog)
     should_pause := false
 
-  if (usb.modtest(usb.KEYS_CTRL) and usb.keystate(usb.KEY_Esc)) or inband_trig == 2
+  if ((usb.keystate(usb.KEY_LCTRL)||usb.keystate(usb.KEY_RCTRL)) and usb.keystate(usb.KEY_Esc)) or inband_trig == 2
     quit
 
   ' Autosave SRAM if last write was 3 seconds ago
@@ -292,7 +309,7 @@ lockrel(ROM_LOCK)
 
 #ifdef INPUT_USE_USB
 repeat tmp from 0 to 31
-  usb.setEmuPadMapping(tmp,0)
+  'usb.setEmuPadMapping(tmp,0)
 #endif
 
 
@@ -300,23 +317,23 @@ PRI poll_menukeys() : keys | pad
 
 pad := long[$40]
 
-if usb.keystate(usb.KEY_UP) or pad.[0]
+if {usb.keystate(usb.KEY_UP) or} pad.[0]
   keys |= MENUKEY_UP
-if usb.keystate(usb.KEY_DOWN) or pad.[1]
+if {usb.keystate(usb.KEY_DOWN) or} pad.[1]
   keys |= MENUKEY_DOWN
-if usb.keystate(usb.KEY_LEFT) or pad.[2]
+if {usb.keystate(usb.KEY_LEFT) or} pad.[2]
   keys |= MENUKEY_LEFT
-if usb.keystate(usb.KEY_RIGHT) or pad.[3]
+if {usb.keystate(usb.KEY_RIGHT) or} pad.[3]
   keys |= MENUKEY_RIGHT
 
 if usb.keystate(usb.KEY_PAGEUP)
   keys |= MENUKEY_PGUP
-if usb.keystate(usb.KEY_PAGEDWN)
+if usb.keystate(usb.KEY_PAGEDOWN)
   keys |= MENUKEY_PGDOWN
 
-if usb.keystate(usb.KEY_Enter) or pad.[7] or pad.[5] or pad.[6]
+if {usb.keystate(usb.KEY_Enter) or} pad.[7] or pad.[5] or pad.[6]
   keys |= MENUKEY_CONFIRM
-if usb.keystate(usb.KEY_Esc) or usb.keystate(usb.KEY_Bkspace) or pad.[4]
+if usb.keystate(usb.KEY_Esc) or {usb.keystate(usb.KEY_Bkspace) or} pad.[4]
   keys |= MENUKEY_BACK
 
 
@@ -1028,19 +1045,19 @@ PRI menu_vdp_init() | i, tmp
   bytefill(VRAM_BASE,0,$1_0000)
   longfill(long[$38],0,20)
 
-  long[$60][ 1] := 1<<VDPFLAG_H40 ' flags
-  long[$60][ 2] := MENU_PLANEA ' Plane A base
-  long[$60][ 3] := MENU_PLANEB ' Plane B base
-  long[$60][ 4] := $A000 ' Window base
-  long[$60][ 5] := $F800 ' Sprite base
-  long[$60][ 6] := $FC00 ' HScroll base
-  long[$60][ 7] := 1+6   ' Plane width (64)
-  long[$60][ 8] := 4     ' Plane height (32)
-  long[$60][ 9] := 0     ' No column scroll
-  long[$60][10] := 0     ' No line scroll
-  long[$60][11] := 0     ' Window column
-  long[$60][12] := 0*8   ' Window row
-  long[$60][13] := 0     ' BG color
+  long[$70][ 1] := 1<<VDPFLAG_H40 ' flags
+  long[$70][ 2] := MENU_PLANEA ' Plane A base
+  long[$70][ 3] := MENU_PLANEB ' Plane B base
+  long[$70][ 4] := $A000 ' Window base
+  long[$70][ 5] := $F800 ' Sprite base
+  long[$70][ 6] := $FC00 ' HScroll base
+  long[$70][ 7] := 1+6   ' Plane width (64)
+  long[$70][ 8] := 4     ' Plane height (32)
+  long[$70][ 9] := 0     ' No column scroll
+  long[$70][10] := 0     ' No line scroll
+  long[$70][11] := 0     ' Window column
+  long[$70][12] := 0*8   ' Window row
+  long[$70][13] := 0     ' BG color
 
   'long[long[$3C]+8*4] := 255
 

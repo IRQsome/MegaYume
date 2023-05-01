@@ -1,0 +1,117 @@
+CON
+
+  MAX_BUTTONS = 10
+  RULE_SIZE = 4+1+MAX_BUTTONS
+
+  TAB = 9
+  LF = 10
+  CR = 13
+
+VAR
+  long unget_chr,last_chr
+  long get_func,get_arg
+
+PRI getc() : chr
+  if (chr:=unget_chr) >= 0
+    unget_chr := -1 ' Technically conflicts with EOF but doesn't matter
+    last_chr := chr
+    return
+  else
+    return last_chr := get_func(get_arg):1
+
+PRI unget()
+  unget_chr := last_chr
+
+PUB parse(buffer_ptr,buffer_max,get_function,get_argument,appname)
+  unget_chr := -1
+  get_func := get_function
+  get_arg := get_argument
+
+  repeat ' Loop over rules
+    parse_rule(buffer_ptr,buffer_max,appname)
+    skip_line()
+    if getc() == -1 ' Check EOF
+      return
+    else
+      unget()
+
+PRI parse_rule(buffer_ptr,buffer_max,appname) : r | tmp, chr, i, devid, byte rule_type, byte buttons[MAX_BUTTONS]
+
+  skip_whitespace()
+  ' Check for generic rule
+  if getc() == "*"
+    ifnot is_space(getc())
+      return -1 ' wrong app
+    rule_type := 1
+  else
+    unget()
+    ' Check app name
+    repeat strsize(appname)
+      ifnot getc() == byte[appname++]
+        unget()
+        return -1 ' wrong app
+    ifnot is_space(getc())
+      unget()
+      return -1 ' wrong app
+    rule_type := 3
+  skip_whitespace()
+  ' Parse ID
+  repeat 8
+    devid <<= 4
+    case chr:=getc()
+      "0".."9": devid += chr-"0"
+      "A".."F": devid += chr-"A"+10
+      other:
+        unget()
+        return -2 ' syntax error
+
+  ' Parse buttons
+  i := 0
+  repeat
+    ifnot is_space(getc())
+      unget()
+      quit
+    skip_whitespace()
+    tmp := 0
+    repeat
+      case chr:=getc()
+        "0".."9": tmp := tmp*10 + chr-"0"
+        " ",TAB,-1,CR,LF,"#":
+          unget()
+          quit
+        other:
+          unget()
+          return -2 ' syntax error
+    if tmp > 255
+      return -2 ' syntax error
+    if i < MAX_BUTTONS
+      buttons[i++] := tmp
+  repeat while i < MAX_BUTTONS
+    buttons[i++] := 0
+
+  ' Try to insert rule into buffer
+  repeat buffer_max
+    tmp := byte[buffer_ptr][4] ' rule type
+    if tmp == 0 || (tmp <= rule_type && long[buffer_ptr][0] == devid)
+      ' Could use one bytemove, but flexspin bugs
+      long[buffer_ptr][0] := devid
+      byte[buffer_ptr][4] := rule_type
+      bytemove(buffer_ptr+5,@buttons,MAX_BUTTONS)
+      return rule_type
+    buffer_ptr += RULE_SIZE
+  return 0 ' Rule didn't fit
+
+PRI is_space(chr) : r
+  return chr == " " || chr == TAB
+
+PRI skip_whitespace()
+  repeat
+    ifnot is_space(getc())
+      unget()
+      return
+
+PRI skip_line() | chr
+  repeat
+    chr := getc()
+    if chr < 0 || chr == CR || chr == LF
+      quit
