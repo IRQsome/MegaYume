@@ -3341,7 +3341,8 @@ if EMUPAD_MAX_DEV > 0
 
 emupad_rule_buffer
 byte long $0F0D00C1, 2,  1,8,2,3,4,7,0,0,9,10 ' RetroBit 6-button controller
-byte 0[(EMUPAD_MAX_RULES-1) * _EMUPAD_RULE_SIZE]
+byte long $0E6F1112, 2,  4,1,2,3,0,0,0,0,9,10 ' NeoGeo mini pad
+byte 0[(EMUPAD_MAX_RULES-2) * _EMUPAD_RULE_SIZE]
 '' Default rule directly follows!
 byte long -1, 255, 1,2,3,4,5,6,7,8,9,10
 end
