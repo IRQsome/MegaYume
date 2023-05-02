@@ -509,7 +509,7 @@ byte "GM T-125016-00",IOMODE_MULTITAP ' The Lost Vikings
 byte "GM BMAP-001-00",IOMODE_6BUTTON ' Xeno Crisis (bad multitap support)
 byte "GM T-23056 -00",IOMODE_6BUTTON ' Columns 3 (bad multitap support)
 byte "GM T-120096-50",IOMODE_MULTITAP_3BUTTON ' Micro Machines 2
-byte "GM 00000000-00",IOMODE_MULTITAP_3BUTTON ' Micro Machines 96
+'byte "GM 00000000-00",IOMODE_MULTITAP_3BUTTON ' Micro Machines 96 (oops is busted)
 iomode_special_serials_end
 
 PRI do_load_rom() | tmp,x
