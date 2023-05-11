@@ -34,7 +34,7 @@ OBJ
 
 video : "MegaVGA"
                 '' A = BT3, B = BT2, C = BT1, X = BT4, Y = BT0, Z = BT5
-usb : "usbnew" | ACTIVITY_LED = -1, ERROR_LED = -1, {USB_BASE_PIN = USB0_BASEPIN,}  ...
+usb : "usbnew" | ACTIVITY_LED = -1, ERROR_LED = -1, USB_BASE_PIN = USB0_BASEPIN,  ...
                  EMUPAD_MAX_DEV = 4, ...
                  EMUPAD_UP_BIT = 0,EMUPAD_DOWN_BIT = 1,EMUPAD_LEFT_BIT = 2,EMUPAD_RIGHT_BIT = 3, ...
                  EMUPAD_BT0_BIT = 9, EMUPAD_BT1_BIT = 5, EMUPAD_BT2_BIT = 4, EMUPAD_BT3_BIT = 6, ...
@@ -119,9 +119,7 @@ menu_vdp_init()
 msgbox_simple(@"Mounting storage...")
 _mount(@"/sd",c._vfs_open_sdcard())
 #ifdef INPUT_USE_USB
-'usb.start(USB0_BASEPIN, USB0_BASEPIN + ENABLE_PIN, USB0_BASEPIN + DM_PIN, 0, $40,%11,%1100,%11<<16,%1100<<16)
 usb.set_emupad_ptr($40)
-usb.set_basepin(USB0_BASEPIN)
 tmp := c.fopen(@"/sd/PADMAP.TXT",@"r")
 if tmp
   padmap.parse(usb.get_emupad_rules(),usb.EMUPAD_MAX_RULES,@c.fgetc,tmp,@"megayume")

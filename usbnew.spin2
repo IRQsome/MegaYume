@@ -747,93 +747,94 @@ dev_desc_buff_p long    0
 con_desc_buff_p long    0
 cache_start_p   long    0
 cache_end_p     long    0
-
-hdev_init_start
-hdev_port       long    0
-hdev_next_datax long    0, 0
-hub_intf_num    long    0
-hub_next_datax  long    0
-hub_status_chg  long    0
-hub_port_status long    0
-if HAVE_MOUSE
-ms_intf_num     long    0
-ms_in_max_pkt   long    0
-end
-kb_intf_num     long    0
-kb_interval     long    0
-kb_in_max_pkt   long    0
-kb_max_index    long    0
-kb_led_states   long    0
-gp_intf_num     long    0
-gp_interval     long    0
-gp_max_index    long    0
-gp_descr_len    long    0, 0[4]
-hdev_init_end
-
-' Initialized at cog startup:
-save_sysclk     long    0         ' Save the current sysclock as the client may change it
-hcog_base_addr  long    0         ' This object's start address in hub, read from PTRB at cog creation
-iframe_ct_new   long    0
-iframe_ct_base  long    0
-utx_tweak       long    0         ' Sysclock speeds above ~120MHz need some fairy dust for USB tx
 if EMUPAD_MAX_DEV > 0
 emupad_out_ptr  long    0
 end
+save_sysclk     long    0         ' Save the current sysclock as the client may change it
+
+hdev_init_start
+hdev_port       res     1
+hdev_next_datax res     2 ' 1+4 byte
+hub_intf_num    res     1
+hub_next_datax  res     1
+hub_status_chg  res     1
+hub_port_status res     1
+if HAVE_MOUSE
+ms_intf_num     res     1
+ms_in_max_pkt   res     1
+end
+kb_intf_num     res     1
+kb_interval     res     1
+kb_in_max_pkt   res     1
+kb_max_index    res     1
+kb_led_states   res     1
+gp_intf_num     res     1
+gp_interval     res     1
+gp_max_index    res     1
+gp_descr_len    res     1+4
+hdev_init_end
+
+' Initialized at cog startup:
+hcog_base_addr  res     1         ' This object's start address in hub, read from PTRB at cog creation
+iframe_ct_new   res     1
+iframe_ct_base  res     1
+utx_tweak       res     1         ' Sysclock speeds above ~120MHz need some fairy dust for USB tx
+
 ' This register block is reset to zero when a USB device connects
 hreg_init_start
-hstatus         long    0         ' Host status flags
-hctwait         long    0         ' Poll-based wait clocks
-ip_delay        long    0         ' Inter-packet delay in bit periods for connected device speed
-tat_wait        long    0         ' Maximum bus turn-around time in bit periods for connected device speed
-nak_retry       long    0         ' NAK retry count, unlimited retries if zero
-xfer_retry      long    0         ' Control transfer retry count
-retry           long    0         ' Transaction retry count
-utx             long    0         ' Byte to transmit on USB
-urx             long    0         ' LSByte receiver status flags, MSByte received data
-newb_flg        long    0         ' Receive "new byte" bit toggle detector
-max_pkt_size    long    0         ' Maximum payload bytes allowed, likely to change on device connect.
-total_data      long    0         ' Total bytes to tx/rx in a transfer data stage
-stage_data      long    0         ' Count of bytes sent/received so far during a data stage.
-pkt_data        long    0         ' Payload size of an OUT packet or bytes received on IN
-frame           long    0         ' USB 1ms frame counter value
-sof_pkt         long    0         ' ISR frame# packet and CRC5
-icrc            long    0         ' Only used by the 1ms frame output ISR routine
-pkt_cnt         long    0         ' Count of DATAx packet payload bytes
-crc             long    0         ' Used for CRC16 calculation
-ep_addr_pid     long    0         ' Endpoint and device addresses for connected device
-retval          long    0         ' Global success/fail return parameter
-context_retval  long    0         ' Operation contextual return parameter
+hstatus         res     1         ' Host status flags
+hctwait         res     1         ' Poll-based wait clocks
+ip_delay        res     1         ' Inter-packet delay in bit periods for connected device speed
+tat_wait        res     1         ' Maximum bus turn-around time in bit periods for connected device speed
+nak_retry       res     1         ' NAK retry count, unlimited retries if zero
+xfer_retry      res     1         ' Control transfer retry count
+retry           res     1         ' Transaction retry count
+utx             res     1         ' Byte to transmit on USB
+urx             res     1         ' LSByte receiver status flags, MSByte received data
+newb_flg        res     1         ' Receive "new byte" bit toggle detector
+max_pkt_size    res     1         ' Maximum payload bytes allowed, likely to change on device connect.
+total_data      res     1         ' Total bytes to tx/rx in a transfer data stage
+stage_data      res     1         ' Count of bytes sent/received so far during a data stage.
+pkt_data        res     1         ' Payload size of an OUT packet or bytes received on IN
+frame           res     1         ' USB 1ms frame counter value
+sof_pkt         res     1         ' ISR frame# packet and CRC5
+icrc            res     1         ' Only used by the 1ms frame output ISR routine
+pkt_cnt         res     1         ' Count of DATAx packet payload bytes
+crc             res     1         ' Used for CRC16 calculation
+ep_addr_pid     res     1         ' Endpoint and device addresses for connected device
+retval          res     1         ' Global success/fail return parameter
+context_retval  res     1         ' Operation contextual return parameter
 ' Device stuff
-hdev_id         long    0, 0[4]
-hdev_bcd        long    0
-hdev_type       long    0, 0      ' Configured device indicator
+hdev_id         res     1+4
+hdev_bcd        res     1
+hdev_type       res     2         ' Configured device indicator
 ' Keyboard/mouse stuff
-hctrl_ep_addr   long    0
-hctrl_max_pkt   long    0
-hconfig_base    long    0
-hcon_tot_len    long    0         ' Size of the complete config descriptor chain
-hdev_intf_idx   long    0         ' Used during verbose descriptor terminal output
-hdev_class      long    0
-hdev_subclass   long    0
-hdev_protocol   long    0
-hsearch_key     long    0         ' Descriptor type to search for in the config chain
-hnext_desc      long    0         ' Offset from the config descriptor start address to the next descriptor in the chain
-hhub_ctrl_ep    long    0         ' Hub control endpoint address
-hhub_ep_addr    long    0         ' Hub interface endpoint address
-hkbd_ctrl_ep    long    0         ' Keyboard control endpoint address
-hkbd_ep_addr    long    0         ' Keyboard interface endpoint address
+hctrl_ep_addr   res     1
+hctrl_max_pkt   res     1
+hconfig_base    res     1
+hcon_tot_len    res     1         ' Size of the complete config descriptor chain
+hdev_intf_idx   res     1         ' Used during verbose descriptor terminal output
+hdev_class      res     1
+hdev_subclass   res     1
+hdev_protocol   res     1
+hsearch_key     res     1         ' Descriptor type to search for in the config chain
+hnext_desc      res     1         ' Offset from the config descriptor start address to the next descriptor in the chain
+hhub_ctrl_ep    res     1         ' Hub control endpoint address
+hhub_ep_addr    res     1         ' Hub interface endpoint address
+hkbd_ctrl_ep    res     1         ' Keyboard control endpoint address
+hkbd_ep_addr    res     1         ' Keyboard interface endpoint address
 if HAVE_MOUSE
-hmouse_ep_addr  long 0 ' Mouse interface endpoint address
+hmouse_ep_addr  res     1 ' Mouse interface endpoint address
 end
-hkbd_poll_cnt   long    0         ' Poll interval counter used for key auto-repeat
-hkbd_ledstates  long    0         ' Off/on state of keyboard LEDs
-hdev_ep_addr    long    0, 0[4]
-hdev_out_addr   long    0
+hkbd_poll_cnt   res     1         ' Poll interval counter used for key auto-repeat
+hkbd_ledstates  res     1         ' Off/on state of keyboard LEDs
+hdev_ep_addr    res     1+4
+hdev_out_addr   res     1
 
 if EMUPAD_MAX_DEV > 0
-hkbd_emupad_buffer long 0[EMUPAD_MAX_DEV]
-hpad_emupad_buffer long 0[EMUPAD_MAX_DEV]
-hpad_emupad_rule   long 0,0[4] ' This is PER REAL DEVICE
+hkbd_emupad_buffer res EMUPAD_MAX_DEV
+hpad_emupad_buffer res EMUPAD_MAX_DEV
+hpad_emupad_rule   res 1+4 ' This is PER REAL DEVICE
 end
 
 hreg_init_end
@@ -1899,17 +1900,13 @@ if HAVE_MOUSE
 end
 .gamepad
                 mov     htmp, hkbd_ep_addr
-                and     htmp, ##ADDR_MASK
-                mov     htmp1, hpar2
-                and     htmp1, ##ADDR_MASK
-                cmp     htmp, htmp1             wz
+                xor     htmp, hpar2
+                and     htmp, ##ADDR_MASK       wz
         if_z    jmp     #.next_intf
         if HAVE_MOUSE
                 mov     htmp, hmouse_ep_addr
-                and     htmp, ##ADDR_MASK
-                mov     htmp1, hpar2
-                and     htmp1, ##ADDR_MASK
-                cmp     htmp, htmp1             wz
+                xor     htmp, hpar2
+                and     htmp, ##ADDR_MASK       wz
         if_z    jmp     #.next_intf
         end
                 getbyte gp_intf_num, hdev_intf_idx, #0  ' Save interface index and poll interval values
@@ -1977,10 +1974,8 @@ hset_config
         if_z    jmp     #.mouse_config                  ' No keyboard
 
                 mov     htmp, hkbd_ep_addr
-                and     htmp, ##ADDR_MASK
-                mov     htmp1, ep_addr_pid
-                and     htmp1, ##ADDR_MASK
-                cmp     htmp, htmp1             wz
+                xor     htmp, ep_addr_pid
+                and     htmp, ##ADDR_MASK       wz
         if_nz   jmp     #.mouse_config                  ' No keyboard
 
                 getbyte htmp, kb_intf_num, #0
@@ -2025,10 +2020,8 @@ if HAVE_MOUSE
                 cmp     hmouse_ep_addr, #0        wz
         if_z    jmp     #.gamepad_config                ' No mouse, setup gamepad, if detected
                 mov     htmp, hmouse_ep_addr
-                and     htmp, ##ADDR_MASK
-                mov     htmp1, ep_addr_pid
-                and     htmp1, ##ADDR_MASK
-                cmp     htmp, htmp1             wz
+                xor     htmp, ep_addr_pid
+                and     htmp, ##ADDR_MASK       wz
         if_nz   jmp     #.gamepad_config                ' No mouse, setup gamepad, if detected
 
                 debug("mouse passed addr check")
@@ -2082,10 +2075,8 @@ if _HAVE_GAMEPAD
         if_z    jmp     #.hub_config                    ' No gamepad
                 alts    hdev_port, #hdev_ep_addr
                 mov     htmp, 0-0
-                and     htmp, ##ADDR_MASK
-                mov     htmp1, ep_addr_pid
-                and     htmp1, ##ADDR_MASK
-                cmp     htmp, htmp1             wz
+                xor     htmp, ep_addr_pid
+                and     htmp, ##ADDR_MASK       wz
         if_nz   jmp     #.hub_config                    ' No gamepad
 
                 alts    hdev_port, #hdev_ep_addr
@@ -2194,10 +2185,8 @@ end
                 cmp     hhub_ep_addr, #0    wz
         if_z    ret                                     ' No HUB
                 mov     htmp, hhub_ep_addr
-                and     htmp, ##ADDR_MASK
-                mov     htmp1, ep_addr_pid
-                and     htmp1, ##ADDR_MASK
-                cmp     htmp, htmp1             wz
+                xor     htmp, ep_addr_pid
+                and     htmp, ##ADDR_MASK       wz
         if_nz   ret                                     ' No HUB
 
                 loc     ptra, #get_hub_desc             ' Get HUB descriptor
