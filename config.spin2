@@ -127,6 +127,32 @@ PINPUT_P2_Y      = -1
 PINPUT_P2_Z      = -1
 PINPUT_P2_MODE   = -1
 
+PINPUT_P3_UP     = -1
+PINPUT_P3_DOWN   = -1
+PINPUT_P3_LEFT   = -1
+PINPUT_P3_RIGHT  = -1
+PINPUT_P3_A      = -1
+PINPUT_P3_B      = -1
+PINPUT_P3_C      = -1
+PINPUT_P3_START  = -1
+PINPUT_P3_X      = -1
+PINPUT_P3_Y      = -1
+PINPUT_P3_Z      = -1
+PINPUT_P3_MODE   = -1
+
+PINPUT_P4_UP     = -1
+PINPUT_P4_DOWN   = -1
+PINPUT_P4_LEFT   = -1
+PINPUT_P4_RIGHT  = -1
+PINPUT_P4_A      = -1
+PINPUT_P4_B      = -1
+PINPUT_P4_C      = -1
+PINPUT_P4_START  = -1
+PINPUT_P4_X      = -1
+PINPUT_P4_Y      = -1
+PINPUT_P4_Z      = -1
+PINPUT_P4_MODE   = -1
+
 
 
 '' Ignore stuff below
