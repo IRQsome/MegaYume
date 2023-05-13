@@ -1278,20 +1278,27 @@ case first := byte[ptr]
   other: return 1 ' silently consume unknown byte
 
 #ifdef INPUT_USE_PINS
-PRI pinput_cog() | i,p,data
+PRI pinput_cog() | p,data,outptr,tabptr,type
 
 repeat i from 0 to 31
   if (p:=pin_table[i]) +< 64
     wrpin(p,PINPUT_PINMODE)
     pinh(p)
 
-repeat
+outptr := $40
+tabptr := @pin_table
+repeat 4
+  type := 1
   data := 0
-  repeat i from 0 to 31
-    if (p:=pin_table[i]) +< 64
+  repeat i from 0 to 11
+    if (p:=byte[tabptr++]) +< 64
       data.[i] := pinr(p)
       'pinw(p-4,data.[i])
-  long[$40] := data
+    elseif i >= 8
+      type := 2
+  data.[28 addpins 3] := type
+  long[outptr] := data
+  outptr += 4
 
 #endif
 DAT
@@ -1301,11 +1308,18 @@ pin_table byte
 byte PINPUT_P1_UP,PINPUT_P1_DOWN,PINPUT_P1_LEFT,PINPUT_P1_RIGHT
 byte PINPUT_P1_B,PINPUT_P1_C,PINPUT_P1_A,PINPUT_P1_START
 byte PINPUT_P1_Z,PINPUT_P1_Y,PINPUT_P1_X,PINPUT_P1_MODE
-byte -1[4]
+
 byte PINPUT_P2_UP,PINPUT_P2_DOWN,PINPUT_P2_LEFT,PINPUT_P2_RIGHT
 byte PINPUT_P2_B,PINPUT_P2_C,PINPUT_P2_A,PINPUT_P2_START
 byte PINPUT_P2_Z,PINPUT_P2_Y,PINPUT_P2_X,PINPUT_P2_MODE
-byte -1[4]
+
+byte PINPUT_P3_UP,PINPUT_P3_DOWN,PINPUT_P3_LEFT,PINPUT_P3_RIGHT
+byte PINPUT_P3_B,PINPUT_P3_C,PINPUT_P3_A,PINPUT_P3_START
+byte PINPUT_P3_Z,PINPUT_P3_Y,PINPUT_P3_X,PINPUT_P3_MODE
+
+byte PINPUT_P4_UP,PINPUT_P4_DOWN,PINPUT_P4_LEFT,PINPUT_P4_RIGHT
+byte PINPUT_P4_B,PINPUT_P4_C,PINPUT_P4_A,PINPUT_P4_START
+byte PINPUT_P4_Z,PINPUT_P4_Y,PINPUT_P4_X,PINPUT_P4_MODE
 #endif
 
 jis_font file "MISAKI8W.DAT"
