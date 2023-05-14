@@ -564,6 +564,8 @@ do_frame
               xcont solid_command,blank_color
               djnz tmp1,#.fp
               ' do Vsync
+              rdlong vdp_mode,vdpmode_ptr
+              mov vdp_mode_fr,vdp_mode
               mov tmp1,sync_lines wc
         if_c  jmp #ntsc_vsync
               cmps discrete_vsync,#0 wc
@@ -606,7 +608,7 @@ after_vsync
               '' do top border
               mov tmp1,#6
               cmps line_multiplier,#1 wc  
-              testbn vdp_mode,#1 orc' Interlace display flag
+              testbn vdp_mode_fr,#1 orc' Interlace display flag
               testb virtual_frame,#0 orc
         if_nc add tmp1,#1
         if_nc sub virtual_line,#1
@@ -656,7 +658,7 @@ after_vsync
               '' do bottom border
               mov tmp1,#10
               cmps line_multiplier,#1 wc
-              testbn vdp_mode,#1 orc' Interlace display flag
+              testbn vdp_mode_fr,#1 orc' Interlace display flag
               testbn virtual_frame,#0 orc
         if_nc mov subline,line_multiplier
         if_nc sub subline,halflines
@@ -757,7 +759,7 @@ do_hsync
 
 
 ntsc_vsync
-              testb vdp_mode,#1 wc' Interlace display flag
+              testb vdp_mode_fr,#1 wc' Interlace display flag
               testbn virtual_frame,#0 andc
         if_c  xor cq_val,cq_alter_val
         if_c  call #.halfpulse
@@ -775,7 +777,7 @@ ntsc_vsync
 
 
               neg tmp1,sync_lines
-              testb vdp_mode,#1 wc' Interlace display flag
+              testb vdp_mode_fr,#1 wc' Interlace display flag
               testbn virtual_frame,#0 andc
 .spl2
               call #.shortpulse
@@ -836,6 +838,7 @@ subline       res 1
 sync_alti     res 1
 scanbuffer    res 1
 vdp_mode      res 1
+vdp_mode_fr   res 1 ' copy of VDP mode only updated per frame
 halflines     res 1
 
 
