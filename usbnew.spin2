@@ -71,9 +71,6 @@ CON
 
     _HAVE_GAMEPAD = HAVE_HIDPAD || (EMUPAD_MAX_DEV > 0)
 
-PUB test_main()
-  start()
-
 PUB start() : r
   return coginit(COGEXEC_NEW,@usb_host_start,0)
 
@@ -1327,8 +1324,8 @@ host_reset
                 dirl    dm                              ' Put smart pins into reset
                 dirl    dp
 
+                setq    #1
                 wrpin   ##USB_V2_DRVOUT, dm             ' The same USB smart pin mode for D- and D+ pins
-                wrpin   ##USB_V2_DRVOUT, dp
                 wxpin   _usb_h_fs_nco_, dm              ' Set host mode and full-speed NCO
 .enable
                 dirh    dm                              ' Crank them smart pins up
@@ -1551,8 +1548,8 @@ hwait_resume
 utx_pre
                 dirl    dm                              ' Put smart pins into reset
                 dirl    dp
-                wrpin   ##0, dm                         ' Disable smartpin mode
-                wrpin   ##0, dp
+                setq    #1
+                wrpin   #0, dm                          ' Disable smartpin mode
                 drvl    dm
                 drvh    dp
 
@@ -1567,8 +1564,8 @@ utx_pre
 
                 dirl    dm                              ' Put smart pins into reset
                 dirl    dp
+                setq    #1
                 wrpin   ##USB_V2_DRVOUT, dm             ' The same USB smart pin mode for D- and D+ pins
-                wrpin   ##USB_V2_DRVOUT, dp
                 wxpin   _usb_h_ls_nco_, dm              ' Host mode and 1.5Mbs baud
                 dirh    dm                              ' Crank them smart pins up
                 dirh    dp
@@ -3298,6 +3295,7 @@ emupad_getnum
 ' Handle disconnect of device (call after emupad_getnum returns with Z set)
 '------------------------------------------------------------------------------
 emupad_discon
+        if_nz jmp       #emupad_write_reports
               mov       htmp,retval
               setd      htmp1,retval
               sets      htmp1,retval
@@ -3522,16 +3520,15 @@ hub_port_handler
         if_z    mov     hkbd_ctrl_ep, #0
         if_z    mov     kb_led_states, #0
         if_z    mov     hkbd_ledstates, kb_led_states
+        if EMUPAD_MAX_DEV > 0
+        if_z    mov     hkbd_emupad_buffer+0, #0 ' currently only 1 kb player
+                call    #emupad_getnum
+                call    #emupad_discon
+        end
         if HAVE_MOUSE
                 cmp     htmp, #M_READY          wz
         if_nz   cmp     htmp, #KBM_READY        wz
         if_z    mov     hmouse_ep_addr, #0
-        end
-
-        if EMUPAD_MAX_DEV > 0
-        if_z    mov     hkbd_emupad_buffer+0, #0 ' currently only 1 kb player
-                call    #emupad_getnum
-        if_z    call    #emupad_discon
         end
         if HAVE_HIDPAD
                 loc ptrb,#hidpad_report
