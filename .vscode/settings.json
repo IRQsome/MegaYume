@@ -1,0 +1,6 @@
+{
+    "search.exclude": {
+        "*.lst": true,
+        "*.p2asm": true
+    }
+}
