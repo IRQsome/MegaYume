@@ -8,9 +8,6 @@ CON
 '' (50Hz overseas is always the third choice)
 PREFER_OVERSEAS = true
 
-'' Wether the second control port should have a pad connected.
-HAVE_PLAYER2 = true
-
 '' Wether holding Down+Start or Up+Start should quit/reset
 INBAND_RESET = true
 
@@ -88,10 +85,7 @@ AUDIO_RIGHT = AUDIO_LEFT + 1
 
 
 '' USB Keyboard/gamepad pins.
-USB0_BASEPIN = 16             ' USB port0/port1 pin block
-NEXT_BASEPIN = 4              ' Add to BASEPIN for next USB port pin
-ENABLE_PIN   = 1              ' USB object enables port voltage protection
-DM_PIN       = 2              ' Add to BASEPIN
+USB0_BASEPIN = 16
 
 
 '' Discrete pin inputs
