@@ -18,6 +18,8 @@ CON
     ACTIVITY_LED  = 57
     ERROR_LED     = 56
 
+    OVERLAP_MEMORY = false ' save memory at cost of making the driver non-reentrant
+
     KEYQUEUE_SIZE = 0
 
     HAVE_MOUSE = false
@@ -70,6 +72,8 @@ CON
     _EMUPAD_RULE_SIZE = 10+4+1
 
     _HAVE_GAMEPAD = HAVE_HIDPAD || (EMUPAD_MAX_DEV > 0)
+
+    MAX_DEVICES = 7 ' DO. NOT. TOUCH.
 
 PUB start() : r
   return coginit(COGEXEC_NEW,@usb_host_start,0)
@@ -718,6 +722,19 @@ host_error
           end
                 jmp     #host_reset                     ' See if it works...
 
+'------------------------------------------------------------------------------
+' Get HID descriptor buffer for current port
+'------------------------------------------------------------------------------
+' On entry:
+' On exit:
+'   PB - HID descriptor buffer pointer
+'------------------------------------------------------------------------------
+get_hid_descr_buffer
+                mov     pb, hdev_port
+                cmpsub  pb, #1
+                mul     pb, #HID_DESCR_LEN
+        _ret_   add     pb, hid_descr_p
+
 
 usb16_poly_r    long    USB16_POLY
 
@@ -735,8 +752,8 @@ end
 if ERROR_LED >= 0
 host_error_led  long    ERROR_LED           ' Client defines the LED pin# to light on error
 end
-hid_descr_p     long    0, 0[4]
-'hid_report_p    long    0, 0[4]
+hid_descr_p     long    0
+'hid_report_p    long    0, 0[MAX_DEVICES]
 'hkbd_report_p   long    0
 hub_descr_p     long    0
 urx_buff_p      long    0
@@ -751,7 +768,7 @@ save_sysclk     long    0         ' Save the current sysclock as the client may 
 
 hdev_init_start
 hdev_port       res     1
-hdev_next_datax res     2 ' 1+4 byte
+hdev_next_datax res     ((1+MAX_DEVICES)+3)/4 ' 1+7 byte
 hub_intf_num    res     1
 hub_next_datax  res     1
 hub_status_chg  res     1
@@ -768,7 +785,7 @@ kb_led_states   res     1
 gp_intf_num     res     1
 gp_interval     res     1
 gp_max_index    res     1
-gp_descr_len    res     1+4
+gp_descr_len    res     1+MAX_DEVICES
 hdev_init_end
 
 ' Initialized at cog startup:
@@ -802,9 +819,9 @@ ep_addr_pid     res     1         ' Endpoint and device addresses for connected 
 retval          res     1         ' Global success/fail return parameter
 context_retval  res     1         ' Operation contextual return parameter
 ' Device stuff
-hdev_id         res     1+4
+hdev_id         res     1+MAX_DEVICES
 hdev_bcd        res     1
-hdev_type       res     2         ' Configured device indicator
+hdev_type       res     ((1+MAX_DEVICES)+3)/4 ' Configured device indicator
 ' Keyboard/mouse stuff
 hctrl_ep_addr   res     1
 hctrl_max_pkt   res     1
@@ -825,13 +842,13 @@ hmouse_ep_addr  res     1 ' Mouse interface endpoint address
 end
 hkbd_poll_cnt   res     1         ' Poll interval counter used for key auto-repeat
 hkbd_ledstates  res     1         ' Off/on state of keyboard LEDs
-hdev_ep_addr    res     1+4
+hdev_ep_addr    res     1+MAX_DEVICES
 hdev_out_addr   res     1
 
 if EMUPAD_MAX_DEV > 0
 hkbd_emupad_buffer res EMUPAD_MAX_DEV
 hpad_emupad_buffer res EMUPAD_MAX_DEV
-hpad_emupad_rule   res 1+4 ' This is PER REAL DEVICE
+hpad_emupad_rule   res 1+MAX_DEVICES ' This is PER REAL DEVICE
 end
 
 hreg_init_end
@@ -1356,7 +1373,7 @@ discon_entry
         if HAVE_HIDPAD
                 loc     pb, #@hidpad_report - @usb_host_start
                 add     pb, hcog_base_addr
-                setq    #(HIDPAD_REPORT_SIZE/4)*4 - 1
+                setq    #(HIDPAD_REPORT_SIZE/4)*MAX_DEVICES - 1
                 wrlong  #0,pb
         end
         if EMUPAD_MAX_DEV > 0
@@ -1421,7 +1438,7 @@ connected
 '                debug(udec(_frame1ms_clks_))
 
                 ' Fall through to idle/processing loop
-                cmp     hdev_port, #4           wcz
+                cmp     hdev_port, #MAX_DEVICES wcz
         if_a    mov     hdev_port, #0 
 
 hidle
@@ -1462,7 +1479,7 @@ hidle
         if_z    add     pa, hcog_base_addr
         if_z    call    pa
 
-                incmod  hdev_port, #4
+                incmod  hdev_port, #MAX_DEVICES
 
 .nopoll
                 cmp     cmd_data, #CMD_SUSPEND  wz
@@ -1580,6 +1597,9 @@ hlut_end
 
 DAT             ' USB Host HUB execution
                 orgh
+if OVERLAP_MEMORY
+                byte    $A5[((@usb_host_start+HID_DESCR_LEN*MAX_DEVICES)-$) #> 0] ' Make sure we don't run into the hubexec area
+end
 '------------------------------------------------------------------------------
 ' Routines called from cog space.
 '------------------------------------------------------------------------------
@@ -1590,9 +1610,15 @@ DAT             ' USB Host HUB execution
 ' USB host cog initialization.
 '------------------------------------------------------------------------------
 usb_host_init
-                loc     pb, #hid_descr                  ' Initialize buffer pointers
+                ' Initialize buffer pointers
+        if OVERLAP_MEMORY
+                loc     pb, #@usb_host_start
+        else
+                loc     pb, #hid_descr
+        end
                 mov     hid_descr_p, pb
                 'add    pb, #HID_DESCR_LEN ' WE SHARE THIS
+                {
                 mov     hid_descr_p + 1, pb
                 add     pb, #HID_DESCR_LEN
                 mov     hid_descr_p + 2, pb
@@ -1600,6 +1626,13 @@ usb_host_init
                 mov     hid_descr_p + 3, pb
                 add     pb, #HID_DESCR_LEN
                 mov     hid_descr_p + 4, pb
+                add     pb, #HID_DESCR_LEN
+                mov     hid_descr_p + 5, pb
+                add     pb, #HID_DESCR_LEN
+                mov     hid_descr_p + 6, pb
+                add     pb, #HID_DESCR_LEN
+                mov     hid_descr_p + 7, pb
+                }
         
                 {
                 loc     pb, #hid_report
@@ -1879,7 +1912,7 @@ hparse_con_desc
                 getbyte kb_in_max_pkt, hr2, #0
                 mov     hkbd_ep_addr, hpar2             ' IN endpoint address
                 'debug(udec(kb_intf_num))
-                debug(uhex_long(hkbd_ep_addr,hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4),udec(kb_in_max_pkt,kb_interval))
+                debug(uhex_long(hkbd_ep_addr,hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4,hdev_ep_addr+5,hdev_ep_addr+6,hdev_ep_addr+7),udec(kb_in_max_pkt,kb_interval))
                 jmp     #.next_intf
 if HAVE_MOUSE
 .mouse
@@ -1892,7 +1925,7 @@ if HAVE_MOUSE
                 getbyte ms_in_max_pkt, hr2, #0
                 mov     hmouse_ep_addr, hpar2           ' IN endpoint address
                 'debug(udec(kb_intf_num))
-                debug(uhex_long(hmouse_ep_addr,hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4),udec(kb_in_max_pkt,kb_interval))
+                debug(uhex_long(hmouse_ep_addr,hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4,hdev_ep_addr+5,hdev_ep_addr+6,hdev_ep_addr+7),udec(kb_in_max_pkt,kb_interval))
                 jmp     #.next_intf
 end
 .gamepad
@@ -1912,7 +1945,7 @@ end
                 mov     0-0, hpar2                      ' IN endpoint address
                 mov     hdev_out_addr, hpar3            ' OUT endpoint address
                 'debug(udec(gp_intf_num))
-                debug(uhex_long(hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4),udec(gp_interval),uhex_long(hdev_out_addr))
+                debug(uhex_long(hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4,hdev_ep_addr+5,hdev_ep_addr+6,hdev_ep_addr+7),udec(gp_interval),uhex_long(hdev_out_addr))
                 jmp     #.next_intf
 .hub
                 cmp     hdev_subclass, #SUBCLASS_INTF_NONE  wz
@@ -2026,8 +2059,7 @@ if HAVE_MOUSE
                 loc     ptra, #get_desc                 ' Get HID descriptor
                 wrword  #$FF, ptra[wLength]
                 wrword  ms_intf_num,ptra[wIndex]
-                alts    hdev_port, #hid_descr_p
-                mov     pb, 0-0
+                call    #get_hid_descr_buffer
                 call    #control_read
                 cmp     retval, #PID_ACK        wz
         if_nz   altd    hdev_port, #hdev_ep_addr
@@ -2035,8 +2067,7 @@ if HAVE_MOUSE
         if_nz   jmp     #.notify_client
                 altd    hdev_port, #gp_descr_len
                 mov     0-0, total_data
-                alts    hdev_port, #hid_descr_p
-                mov     pb, 0-0
+                call    #get_hid_descr_buffer
                 debug(uhex(pb),uhex_byte_array(pb,total_data))
 
                 getbyte htmp, ms_intf_num, #0
@@ -2116,8 +2147,7 @@ if _HAVE_GAMEPAD
                 loc     ptra, #get_desc                 ' Get HID descriptor
                 wrword  #$FF, ptra[wLength]
                 wrword  #0,ptra[wIndex] ' this breaks if not zero?
-                alts    hdev_port, #hid_descr_p
-                mov     pb, 0-0
+                call    #get_hid_descr_buffer
                 call    #control_read
                 cmp     retval, #PID_ACK        wz
         if_nz   altd    hdev_port, #hdev_ep_addr
@@ -2125,8 +2155,7 @@ if _HAVE_GAMEPAD
         if_nz   jmp     #.notify_client
                 altd    hdev_port, #gp_descr_len
                 mov     0-0, total_data
-                alts    hdev_port, #hid_descr_p
-                mov     pb, 0-0
+                call    #get_hid_descr_buffer
                 debug(uhex(pb),uhex_byte_array(pb,total_data))
 
                 mov     htmp2, #HID_READY               ' Standard gamepad
@@ -2195,19 +2224,16 @@ end
         if_nz   jmp     #.notify_client
                 debug(uhex_byte_array(hub_descr_p,total_data))
 
+                mov     ptra, hub_descr_p
+                rdbyte  htmp3, ptra[2]                  ' bNbrPorts
+                fle     htmp3, #MAX_DEVICES             ' Max. 7 ports supported
+                debug(uhex_byte_array(hub_descr_p,total_data),", bNbrPorts = ", udec_(htmp3))
+.pwr_loop
                 loc     ptra, #set_port_feat            ' Power on ports
                 wrword  #HUB_PORT_POWER, ptra[wValue]
-                wrword  #1, ptra[wIndex]
+                wrword  htmp3, ptra[wIndex]
                 call    #control_write
-                loc     ptra, #set_port_feat
-                wrword  #2, ptra[wIndex]
-                call    #control_write
-                loc     ptra, #set_port_feat
-                wrword  #3, ptra[wIndex]
-                call    #control_write
-                loc     ptra, #set_port_feat
-                wrword  #4, ptra[wIndex]
-                call    #control_write
+                djnz    htmp3, #.pwr_loop
 
                 mov     hctwait, _500ms_
                 add     hctwait, _100ms_
@@ -2677,8 +2703,8 @@ hid_decode
 '   ptrb - controller report
 '------------------------------------------------------------------------------
 hpad_hid
-                alts    hdev_port, #hid_descr_p
-                mov     ptra, 0-0
+                call    #get_hid_descr_buffer
+                mov     ptra, pb
                 alts    hdev_port, #gp_descr_len
                 mov     pa, 0-0
                 'debug(udec(hdev_port), " HID ", uhex_long(ep_addr_pid),uhex_long(ptra),udec(pa))
@@ -3364,26 +3390,12 @@ hget_hub_status
                 rdlong  hub_status_chg, urx_buff_p
                 debug(ubin_long(hub_status_chg))
 
-                testb   hub_status_chg, #1      wz
-        if_x0   jmp     #.port2
                 mov     hdev_port, #1
-                call    #hub_port_handler
-.port2
-                testb   hub_status_chg, #2      wz
-        if_x0   jmp     #.port3
-                mov     hdev_port, #2
-                call    #hub_port_handler
-.port3
-                testb   hub_status_chg, #3      wz
-        if_x0   jmp     #.port4
-                mov     hdev_port, #3
-                call    #hub_port_handler
-.port4
-                testb   hub_status_chg, #4      wz
-        if_x0   jmp     #.portN
-                mov     hdev_port, #4
-                call    #hub_port_handler
-.portN
+.loop
+                testb   hub_status_chg, hdev_port wz
+        if_x1   call    #hub_port_handler
+                incmod  hdev_port, #7           wcz
+        if_nc   jmp     #.loop
                 ret
 
 hub_port_handler
@@ -3702,14 +3714,15 @@ end
 usb_cache_start
 
 ' HID descriptor and report buffers
-hid_descr       byte    0[HID_DESCR_LEN * 4]
-'hid_report      byte    0[HID_IN_RPT_LEN * 4]
+if !!OVERLAP_MEMORY
+hid_descr       byte    0[HID_DESCR_LEN * MAX_DEVICES]
+end
 hkbd_report     byte    0[8]
 hkbd_led_rep    byte    0
 alignl
 
 if HAVE_HIDPAD
-hidpad_report   byte    0[4*HIDPAD_REPORT_SIZE]
+hidpad_report   byte    0[MAX_DEVICES*HIDPAD_REPORT_SIZE]
 end
 
 ' HUB descriptor
