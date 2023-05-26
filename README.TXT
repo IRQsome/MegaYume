@@ -46,6 +46,10 @@ Forum thread, chronicalling development and other interesting info: https://foru
 
 - Enjoy the game! (Or not, if it's broken....)
 
+- When playing a game with a save feature,
+  wait at least 5 seconds for the save to be flushed to disk before powering off.
+  Returning to the selection screen is always safe.
+
 - You may return to the game selection by holding Start+Down for a few seconds or hitting Ctrl+Esc
 - You may RESET the game by holding Start+Up for a few seconds or hitting Ctrl+R
 - You may freeze the CPU by hitting Pause/Break - this is a debugging feature and may mess things up.
