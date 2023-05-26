@@ -54,6 +54,7 @@ Forum thread, chronicalling development and other interesting info: https://foru
 If you want to download some freeware ROMs to play around with, here's a couple:
 
  - Bad Apple demo: https://www.dropbox.com/s/waa4c2cje0tegon/BadApple.bin?dl=1
+ - Cave Story MD: https://github.com/andwn/cave-story-md
  - L'Abbaye des Morts: https://playonretro.itch.io/labbaye-des-morts-megadrivegenesis-por-002
  - Old Towers: https://retrosouls.itch.io/old-towers
  - Alter Ego: https://retrosouls.itch.io/alterego16bit
