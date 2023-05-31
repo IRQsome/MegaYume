@@ -22,6 +22,8 @@ CON
 
     KEYQUEUE_SIZE = 0
 
+    NUMLOCK_DEFAULT_STATE = true
+
     HAVE_MOUSE = false
 
     HAVE_HIDPAD = false ' Set to false to disable HidPad inteface
@@ -769,6 +771,7 @@ save_sysclk     long    0         ' Save the current sysclock as the client may 
 hdev_init_start
 hdev_port       res     1
 hdev_next_datax res     ((1+MAX_DEVICES)+3)/4 ' 1+7 byte
+kbm_next_datax  res     1
 hub_intf_num    res     1
 hub_next_datax  res     1
 hub_status_chg  res     1
@@ -1448,7 +1451,7 @@ hidle
                 pollct3                         wc
         if_nc   jmp     #.nopoll
                 getct   hct3
-                addct3  hct3, _2ms_                     ' Set the timer for next poll interval
+                addct3  hct3, _1ms_                     ' Set the timer for next poll interval
 
                 altgb   hdev_port, #hdev_type
                 getbyte htmp
@@ -1456,6 +1459,14 @@ hidle
                 cmp     htmp, #HUB_READY        wz
         if_z    loc     pa, #@hget_hub_status - @usb_host_start
         if_z    jmp     #.poll
+
+        if _HAVE_GAMEPAD
+                cmp     htmp, #HID_READY        wz
+        if_nz   cmp     htmp, #PS3_READY        wz
+        if_nz   cmp     htmp, #XINPUT_READY     wz
+        if_z    loc     pa, #@hget_gp_in_report - @usb_host_start
+        if_z    jmp     #.poll
+        end
 
         if HAVE_MOUSE
                 cmp     htmp, #M_READY          wz
@@ -1467,17 +1478,20 @@ hidle
         if_z    loc     pa, #@hget_kbd_in_report - @usb_host_start
         if_z    jmp     #.poll
 
-        if _HAVE_GAMEPAD
-                cmp     htmp, #HID_READY        wz
-        if_nz   cmp     htmp, #PS3_READY        wz
-        if_nz   cmp     htmp, #XINPUT_READY     wz
-        if_z    loc     pa, #@hget_gp_in_report - @usb_host_start
-        'if_z    jmp     #.poll
+                cmp     htmp, #KBM_READY        wz
+        if_nz   jmp     #.skip_poll
+                bitnot  hstatus, #KBM_TOGGLEB   wcz
+        if_nc   loc     pa, #@hget_kbd_in_report - @usb_host_start
+        if HAVE_MOUSE
+        if_c    loc     pa, #@hget_mouse_in_report - @usb_host_start
+        else
+        if_c    jmp     #.skip_poll
         end
 
 .poll
-        if_z    add     pa, hcog_base_addr
-        if_z    call    pa
+                add     pa, hcog_base_addr
+                call    pa
+.skip_poll
 
                 incmod  hdev_port, #MAX_DEVICES
 
@@ -1939,6 +1953,10 @@ end
                 and     htmp, ##ADDR_MASK       wz
         if_z    jmp     #.next_intf
         end
+                altd    hdev_port, #hdev_ep_addr        ' Skip if already set
+                cmp     0-0, #0                 wz      ' |
+        if_nz   jmp     #.next_intf
+
                 getbyte gp_intf_num, hdev_intf_idx, #0  ' Save interface index and poll interval values
                 getbyte gp_interval, hr2, #3
                 altd    hdev_port, #hdev_ep_addr
@@ -2025,7 +2043,7 @@ hset_config
         'if_nz   jmp     #.notify_client
                 mov     hctwait, _2ms_
                 call    #poll_waitx
-                mov     kb_led_states, #LED_NUMLKF
+                mov     kb_led_states, #NUMLOCK_DEFAULT_STATE ? LED_NUMLKF : 0
                 mov     hkbd_ledstates, kb_led_states
                 loc     pa, #hkbd_led_rep
                 wrbyte  hkbd_ledstates,pa
@@ -2042,8 +2060,12 @@ hset_config
                 bitc    hkbd_ctrl_ep, #31
                 mov     ep_addr_pid, hctrl_ep_addr      ' Restore the control ep addr for mouse configuration
                 mov     hkbd_poll_cnt, #0               ' Initialize key auto-repeat counters
-                mov     htmp2, #KB_READY                ' Keyboard interface configured
+                setbyte kbm_next_datax, #PID_DATA0, #0  ' Reset interrupt IN datax sequence PIDs
+                mov     htmp2, #KB_READY                ' Only the keyboard interface configured
+        if !!HAVE_MOUSE
+                '' If we could have a mouse, fall through into mouse config to detect combo dev
                 jmp     #.notify_client
+        end
 
 .mouse_config
 if HAVE_MOUSE
@@ -2062,8 +2084,7 @@ if HAVE_MOUSE
                 call    #get_hid_descr_buffer
                 call    #control_read
                 cmp     retval, #PID_ACK        wz
-        if_nz   altd    hdev_port, #hdev_ep_addr
-        if_nz   mov     0-0, #0
+        if_nz   mov     hmouse_ep_addr, #0
         if_nz   jmp     #.notify_client
                 altd    hdev_port, #gp_descr_len
                 mov     0-0, total_data
@@ -2081,7 +2102,7 @@ if HAVE_MOUSE
         if_nz   jmp     #.notify_client
                 debug("mouse passed SetProtocol")
                 mov     hpar1, #0                       ' SetIdle() duration 0 = indefinite
-                getbyte hpar2, kb_intf_num, #0
+                getbyte hpar2, ms_intf_num, #0
                 call    #hset_idle
                 'cmp     retval, #PID_ACK        wz
         'if_nz   mov     hmouse_ep_addr, #0
@@ -2093,7 +2114,12 @@ if HAVE_MOUSE
                 bitc    ep_addr_pid, #31
                 mov     hmouse_ep_addr, ep_addr_pid
                 mov     ep_addr_pid, hctrl_ep_addr      ' Restore the control ep addr for mouse configuration
-                mov     htmp2, #M_READY                 ' Mouse interface configured
+                setbyte kbm_next_datax, #PID_DATA0, #1  ' Reset interrupt IN datax sequence PIDs
+                mov     htmp2, hkbd_ep_addr
+                xor     htmp2, hmouse_ep_addr
+                and     htmp2, ##ADDR_MASK              wz
+        if_z    mov     htmp2, #KBM_READY               ' Both keyboard and mouse interfaces were configured
+        if_nz   mov     htmp2, #M_READY                 ' Only the mouse interface configured
                 jmp     #.notify_client
 end
 .gamepad_config
@@ -2164,6 +2190,7 @@ if _HAVE_GAMEPAD
                 loc     ptra, #xinp_led_cmd             ' Turn on LED
                 mov     pb,hdev_port
                 cmpsub  pb,#1 ' root device is also player 1
+                fle     pb,#3
                 add     pb,#$06 ' LED patterns 06..09 for players 1..4
                 wrbyte  pb, ptra[2]
 
@@ -2179,7 +2206,7 @@ if _HAVE_GAMEPAD
                 loc     ptra, #ps3_command_buff         ' Turn on LED
                 mov     pb,hdev_port
                 fge     pb,#1 ' root device is also player 1
-                'fle    pb,#4
+                fle     pb,#4
                 decod   pb
                 wrbyte  pb, ptra[9]
 
@@ -2209,11 +2236,11 @@ end
 
 .hub_config
                 cmp     hhub_ep_addr, #0    wz
-        if_z    ret                                     ' No HUB
+        if_z    jmp     #.notify_client                 ' No HUB
                 mov     htmp, hhub_ep_addr
                 xor     htmp, ep_addr_pid
                 and     htmp, ##ADDR_MASK       wz
-        if_nz   ret                                     ' No HUB
+        if_nz   jmp     #.notify_client                 ' No HUB
 
                 loc     ptra, #get_hub_desc             ' Get HUB descriptor
                 wrword  #$FF, ptra[wLength]
@@ -2280,6 +2307,8 @@ init_kbdm_data
 
                 mov     hdev_next_datax,##PID_DATA0 * $01010101 ' Reset interrupt IN datax sequence PIDs
                 mov     hdev_next_datax + 1,hdev_next_datax
+                setbyte kbm_next_datax, #PID_DATA0, #0
+                setbyte kbm_next_datax, #PID_DATA0, #1
 
         _ret_   mov     hub_next_datax, #PID_DATA0
 
@@ -2328,8 +2357,7 @@ hset_kbdled_report
 hget_kbd_in_report
                 mov     ep_addr_pid, hkbd_ep_addr
                 mov     hpar2, urx_buff_p
-                altgb   hdev_port, #hdev_next_datax
-                getbyte hpar3
+                getbyte hpar3, kbm_next_datax, #0
                 setword hpar3, kb_in_max_pkt, #1        ' Always ask for max report size
                 call    #do_int_in
                 cmp     retval, #PID_ACK        wz
@@ -2338,13 +2366,10 @@ hget_kbd_in_report
                 cmp     hpar3, #0               wz
         if_z    ret                                     ' Ignore an empty DATAx packet
 
-                altgb   hdev_port, #hdev_next_datax     ' Txn success, so toggle DATAx
-                getbyte htmp                            ' |
+                getbyte htmp, kbm_next_datax, #0        ' Txn success, so toggle DATAx
                 cmp     htmp, #PID_DATA0        wz      ' |
-        if_z    mov     htmp, #PID_DATA1                ' |
-        if_nz   mov     htmp, #PID_DATA0                ' |
-                altsb   hdev_port, #hdev_next_datax     ' |
-                setbyte htmp                            ' |
+        if_z    setbyte kbm_next_datax, #PID_DATA1, #0  ' |
+        if_nz   setbyte kbm_next_datax, #PID_DATA0, #0  ' |
 
                 mov     kb_max_index, hpar3             ' Save actual bytes read
                 call    #hkbd_compare
@@ -2541,8 +2566,7 @@ if HAVE_MOUSE
 hget_mouse_in_report
                 mov     ep_addr_pid, hmouse_ep_addr
                 mov     hpar2, urx_buff_p
-                altgb   hdev_port, #hdev_next_datax
-                getbyte hpar3
+                getbyte hpar3, kbm_next_datax, #1
                 setword hpar3, ms_in_max_pkt, #1        ' Always ask for max report size
                 call    #do_int_in
                 cmp     retval, #PID_ACK        wz
@@ -2551,15 +2575,16 @@ hget_mouse_in_report
                 cmp     hpar3, #0               wz
         if_z    ret                                     ' Ignore an empty DATAx packet
 
-                altgb   hdev_port, #hdev_next_datax     ' Txn success, so toggle DATAx
-                getbyte htmp                            ' |
+                getbyte htmp, kbm_next_datax, #1        ' Txn success, so toggle DATAx
                 cmp     htmp, #PID_DATA0        wz      ' |
-        if_z    mov     htmp, #PID_DATA1                ' |
-        if_nz   mov     htmp, #PID_DATA0                ' |
-                altsb   hdev_port, #hdev_next_datax     ' |
-                setbyte htmp                            ' |
+        if_z    setbyte kbm_next_datax, #PID_DATA1, #1  ' |
+        if_nz   setbyte kbm_next_datax, #PID_DATA0, #1  ' |
 
                 mov     ptra, urx_buff_p
+                cmp     hpar3, #5               wcz     ' Hack: Combo PS/2-USB adapters adds report-id
+        if_ae   add     ptra, #1                        ' | skip
+        if_ae   sub     hpar3, #1
+
                 loc     pa, #mouse_limits
                 loc     ptrb, #mouse_xacc
 
@@ -3924,7 +3949,7 @@ CON ' USB Host constants
 ' Host->class driver USB connect speed:
     #0, USB_SPEED_UNKNOWN, USB_SPEED_LOW, USB_SPEED_FULL
 ' Host status bit positions. Bit4 and bit5 use the receiver status constants for SOP and EOP:
-    #0, IDLEB, CONNECTEDB, LOW_SPEEDB, DATAx_TGLB[4], DWNSTRM_HUBB, SUSPENDB
+    #0, IDLEB, CONNECTEDB, LOW_SPEEDB, DATAx_TGLB[4], DWNSTRM_HUBB, SUSPENDB, KBM_TOGGLEB
 ' Host status bitflags. Unless otherwise noted, bit states are active high:
     IDLEF        = decod(IDLEB)             ' Set when USB in idle state
     CONNECTEDF   = decod(CONNECTEDB)        ' USB device connected
