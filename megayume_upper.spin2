@@ -213,37 +213,6 @@ exmem_stop()
 bytefill(MKRAM_BASE,0,$1_0000)
 bytefill(VRAM_BASE,0,$1_0000)
 
-#ifdef INPUT_USE_USB
-{
-' Keyboard to gamepad map
-usb.setEmuPadMapping( 0,usb.KEY_UP)             ' Up
-usb.setEmuPadMapping( 1,usb.KEY_DOWN)           ' Down
-usb.setEmuPadMapping( 2,usb.KEY_LEFT)           ' Left
-usb.setEmuPadMapping( 3,usb.KEY_RIGHT)          ' Right
-usb.setEmuPadMapping( 4,usb.KEY_C)              ' B
-usb.setEmuPadMapping( 5,usb.KEY_V)              ' C
-usb.setEmuPadMapping( 6,usb.KEY_X)              ' A
-usb.setEmuPadMapping( 7,usb.KEY_ENTER)          ' START
-usb.setEmuPadMapping( 8,usb.KEY_F)              ' Z
-usb.setEmuPadMapping( 9,usb.KEY_D)              ' Y
-usb.setEmuPadMapping(10,usb.KEY_S)              ' X
-usb.setEmuPadMapping(11,usb.KEY_A)              ' MODE
-  ' TODO: Figure something out for player 2
-' Keyboard to gamepad map
-usb.setEmuPadMapping(16,usb.KEY_KP5)            ' Up
-usb.setEmuPadMapping(17,usb.KEY_KP2DWN)         ' Down
-usb.setEmuPadMapping(18,usb.KEY_KP1END)         ' Left
-usb.setEmuPadMapping(19,usb.KEY_KP3PGD)         ' Right
-usb.setEmuPadMapping(20,usb.KEY_Comma)          ' B
-usb.setEmuPadMapping(21,usb.KEY_Dot)            ' C
-usb.setEmuPadMapping(22,usb.KEY_M)              ' A
-usb.setEmuPadMapping(23,usb.KEY_KPEnter)        ' START
-usb.setEmuPadMapping(24,usb.KEY_L)              ' Z
-usb.setEmuPadMapping(25,usb.KEY_K)              ' Y
-usb.setEmuPadMapping(26,usb.KEY_J)              ' X
-usb.setEmuPadMapping(27,usb.KEY_H)              ' MODE
-}
-#endif
 
 ' setup Z80
 z80_cog := coginit(HUBEXEC_NEW,long[$2C],0)
@@ -305,11 +274,6 @@ waitms(1)
 cogstop(tmp)
 
 lockrel(ROM_LOCK)
-
-#ifdef INPUT_USE_USB
-repeat tmp from 0 to 31
-  'usb.setEmuPadMapping(tmp,0)
-#endif
 
 
 PRI poll_menukeys() : keys | pad
