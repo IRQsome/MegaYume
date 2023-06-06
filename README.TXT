@@ -32,7 +32,7 @@ Forum thread, chronicalling development and other interesting info: https://foru
   -= HOW TO USE =-
   ----------------
 
-- Make you have flexspin 5.9.27 or newer installed
+- Make you have flexspin 6.1.6 or newer installed
 
 - Configure memory type, pinouts and video mode in "config.spin2".
   In particular, read RAMCONFIG.MD for more info on.. uh.. RAM config.
