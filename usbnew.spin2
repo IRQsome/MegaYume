@@ -14,9 +14,11 @@ CON
     CLKFREQ_PTR = $14
 
     USB_BASE_PIN  = 16
+    USB_ENABLE_OFFSET = 1 ' Set -1 if not present
+    USB_DMINUS_OFFSET = 2 ' Must end up on an even pin. D+ is always this +1
 
-    ACTIVITY_LED  = 57
-    ERROR_LED     = 56
+    ACTIVITY_LED  = -1
+    ERROR_LED     = -1
 
     OVERLAP_MEMORY = false ' save memory at cost of making the driver non-reentrant
 
@@ -30,8 +32,9 @@ CON
     HIDPAD_REPORT_SIZE = 7*4 ' do not change!
     HIDPAD_DEVICES = 4 ' do not change!
 
-    EMUPAD_MAX_DEV = 0 ' Set to 0 to disable EmuPad interface
+    EMUPAD_MAX_PLAYER = 0 ' Set to 0 to disable EmuPad interface
     EMUPAD_MAX_RULES = 20
+    EMUPAD_BUILTIN_RULES = false
     
     ' EmuPad report format config
     EMUPAD_TYPE_NIBBLE = 7
@@ -73,17 +76,46 @@ CON
     _EMUPAD_LR_MASK = (decod EMUPAD_LEFT_BIT) | (decod EMUPAD_RIGHT_BIT)
     _EMUPAD_RULE_SIZE = 10+4+1
 
-    _HAVE_GAMEPAD = HAVE_HIDPAD || (EMUPAD_MAX_DEV > 0)
+    _HAVE_GAMEPAD = HAVE_HIDPAD || (EMUPAD_MAX_PLAYER > 0)
 
     MAX_DEVICES = 7 ' DO. NOT. TOUCH.
 
-PUB start() : r
-  return coginit(COGEXEC_NEW,@usb_host_start,0)
+OBJ '' Startup/configuration
 
+PUB start() : r
+  ifnot driver_cog
+    r := coginit(COGEXEC_NEW,@usb_host_start,0)
+    if r >= 0
+      driver_cog := r+1
+
+PUB stop()
+  if driver_cog
+    cogstop(driver_cog-1)
+    ifnot OVERLAP_MEMORY ' if OVERLAP_MEMORY, be careful
+      driver_cog := 0
+      pinclear(dm addpins 1)
+      if usb_enable_pin >= 0
+        pinclear(usb_enable_pin)
+
+'' Get current driver cog or -1 if not running
+PUB current_cog() : r
+  return driver_cog - 1
+
+'' Must be called before start()
 PUB set_basepin(pin)
-  usb_event_pin := pin
-  dm := pin+2
-  dp := pin+3
+  if USB_ENABLE_OFFSET >= 0
+    usb_enable_pin := pin+USB_ENABLE_OFFSET
+  dm := pin+USB_DMINUS_OFFSET
+  dp := pin+USB_DMINUS_OFFSET+1
+
+'' Must be called before start()
+PUB set_pins_explicit(enable,dminus)
+  usb_enable_pin := enable
+  dm := dminus
+  dp := dminus+1
+
+OBJ '' Keyboard State API
+    '' (Always enabled)
 
 '' Get current pressed state of a keyboard key
 PUB keystate(key) : r | buf[2],tmp
@@ -113,81 +145,8 @@ PUB keystate(key) : r | buf[2],tmp
 PUB ledstates() : r
   return hkbd_led_rep
 
-PUB set_emupad_ptr(ptr) ' Call before starting!
-  if EMUPAD_MAX_DEV > 0
-    emupad_out_ptr := ptr
-
-PUB get_emupad_rules() : r
-  return @emupad_rule_buffer
-
-PUB get_keyboard_raw_buffer() :r
-  return @hkbd_report
-
-PUB get_hidpad_buffer() : r
-  return @hidpad_report
-
-'' Get VID/PID pair for connected device. 0 means disconnected
-PUB hidpad_id(dev) : r
-  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][0]
-
-'' Get device caps. These are often false-positive
-'' (i.e. axis marked as valid, but not physically extant on device)
-'' xxxxxxxx_xxrrrzyx_hhhhaaaa_bbbbbbbb
-''            zyx||| |||||||| ++++++++ n. buttons
-''            |||||| ||||++++--------- n. axes
-''            |||||| ++++------------- n. hats
-''            ++++++------------------ valid axes
-PUB hidpad_getcaps(dev) : r
-  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][1]
-
-'' Get all buttons for a device
-PUB hidpad_buttons(dev) :r
-  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][5]
-
-'' Get one button
-PUB hidpad_button(dev,bnum)
-  if bnum +>= 32
-    return false
-  else
-    return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][5].[bnum]
-
-''
-PUB hidpad_axis(dev,axnum)
-  if axnum +>= 6
-    return 0
-  else 
-    return word[@hidpad_report+dev*HIDPAD_REPORT_SIZE][4+axnum] signx 15
-
-''
-PUB hidpad_hat(dev,hatnum)
-  if hatnum +>= 4
-    return 0
-  else 
-    return byte[@hidpad_report+dev*HIDPAD_REPORT_SIZE][6*4+hatnum]
-
-PUB mouse_xyz() : x,y,z
-  x := mouse_xacc
-  y := mouse_yacc
-  z := mouse_zacc
-
-PUB mouse_move(x,y)
-  mouse_lock := 1
-  waitus(2) ' hope driver is now done
-  mouse_xacc := x
-  mouse_yacc := y
-  if mouse_outptr
-    long[mouse_outptr] := y << 16 | x & $FFFF
-  mouse_lock := 0
-
-PUB mouse_buttons() : r
-  return mouse_bstate&7
-
-PUB mouse_set_limits(xlim,ylim)
-  mouse_limits[0] := xlim
-  mouse_limits[1] := ylim
-
-PUB mouse_set_outptr(ptr)
-  mouse_outptr := ptr
+OBJ '' Keyboard queue API
+    '' Set KEYQUEUE_SIZE to enable (recommended value: 32)
 
 '' Return key event from buffer if there is one
 PUB get_key() : r | tail
@@ -199,13 +158,111 @@ PUB get_key() : r | tail
     tail := 0
   keyq_tail := tail
 
-'' Peek top of key event buffer
+'' Peek top of key event buffer (returns 0 if no pending event)
 PUB peek_key() : r | tail
   tail := keyq_tail
   if keyq_head == tail
     return 0 ' No event
   else
     return keyq_data[tail]
+
+OBJ '' Mouse API
+    '' Set HAVE_MOUSE to enable
+
+'' Get mouse coordinates
+PUB mouse_xy() : x,y
+  x := mouse_xacc
+  y := mouse_yacc
+
+'' Get mouse scrolling (horizontal scroll NYI)
+PUB mouse_scroll() : x,y
+  x := 0
+  y := mouse_zacc
+
+'' Emulate mouse movement
+PUB mouse_move(x,y)
+  mouse_lock := 1
+  waitus(2) ' hope driver is now done
+  mouse_xacc := x
+  mouse_yacc := y
+  if mouse_outptr
+    long[mouse_outptr] := y << 16 | x & $FFFF
+  mouse_lock := 0
+
+'' Get mouse buttons state
+PUB mouse_buttons() : r
+  return mouse_bstate&7
+
+'' Set limits for mouse movement
+PUB mouse_set_limits(xlim,ylim)
+  mouse_limits[0] := xlim
+  mouse_limits[1] := ylim
+
+'' Set pointer for "hardware" sprite control
+PUB mouse_set_outptr(ptr)
+  mouse_outptr := ptr
+
+OBJ '' HIDPad API
+    '' Set HAVE_HIDPAD to enable.
+    '' Warning: never pass a device ID larger or equal than MAX_DEVICES
+
+'' Get VID/PID pair for connected device. 0 means disconnected
+PUB hidpad_id(dev) : r
+  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][0]
+
+'' Get device capabilites. These are often false-positive.
+'' (i.e. axis marked as valid, but not physically extant on device)
+'' xxxxxxxx_xxrrrzyx_hhhhaaaa_bbbbbbbb
+''            zyx||| |||||||| ++++++++ n. buttons
+''            |||||| ||||++++--------- n. axes
+''            |||||| ++++------------- n. hats
+''            ++++++------------------ valid axes
+PUB hidpad_getcaps(dev) : r
+  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][1]
+
+'' Get all button states for a device
+PUB hidpad_buttons(dev) : r 
+  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][5]
+
+'' Get state of one button
+PUB hidpad_button(dev,bnum) : r
+  if bnum +>= 32
+    return false
+  else
+    return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][5].[bnum]
+
+'' Get state of an axis (normalized between -32768 and 32767)
+PUB hidpad_axis(dev,axnum) : r
+  if axnum +>= 6
+    return 0
+  else 
+    return word[@hidpad_report+dev*HIDPAD_REPORT_SIZE][4+axnum] signx 15
+
+'' Get state of a hat
+PUB hidpad_hat(dev,hatnum) : r
+  if hatnum +>= 4
+    return 0
+  else 
+    return byte[@hidpad_report+dev*HIDPAD_REPORT_SIZE][6*4+hatnum]
+
+OBJ '' EmuPad API
+    '' Set EMUPAD_MAX_PLAYER to enable
+    '' See docs for more details
+
+PUB set_emupad_ptr(ptr) ' Call before starting!
+  if EMUPAD_MAX_PLAYER > 0
+    emupad_out_ptr := ptr
+
+PUB get_emupad_rule_buffer() : r
+  return @emupad_rule_buffer
+
+OBJ '' Raw buffer getters (for advanced/debug use)
+
+PUB get_keyboard_raw_buffer() :r
+  return @hkbd_report
+
+PUB get_hidpad_buffer() : r
+  return @hidpad_report
 
 
 DAT             ' Startup for ASM only
@@ -745,9 +802,9 @@ cmd_data        long    0
 usb_err_code    long    ERR_NONE
 
 ' Parameters block assigned at cog startup
-dm              long    USB_BASE_PIN + 2    ' Client defines the basepin for four consecutive USB port pins
-dp              long    USB_BASE_PIN + 3
-usb_event_pin   long    USB_BASE_PIN        ' Host event reporting uses a long repository smart pin
+dm              long    USB_BASE_PIN + USB_DMINUS_OFFSET ' Client defines the basepin for four consecutive USB port pins
+dp              long    USB_BASE_PIN + USB_DMINUS_OFFSET + 1
+usb_enable_pin  long    USB_ENABLE_OFFSET < 0 ? -1 : USB_BASE_PIN + USB_ENABLE_OFFSET
 if ACTIVITY_LED >= 0
 host_active_led long    ACTIVITY_LED        ' Client defines the LED pin# for host bus activity
 end
@@ -763,7 +820,7 @@ dev_desc_buff_p long    0
 con_desc_buff_p long    0
 cache_start_p   long    0
 cache_end_p     long    0
-if EMUPAD_MAX_DEV > 0
+if EMUPAD_MAX_PLAYER > 0
 emupad_out_ptr  long    0
 end
 save_sysclk     long    0         ' Save the current sysclock as the client may change it
@@ -848,9 +905,9 @@ hkbd_ledstates  res     1         ' Off/on state of keyboard LEDs
 hdev_ep_addr    res     1+MAX_DEVICES
 hdev_out_addr   res     1
 
-if EMUPAD_MAX_DEV > 0
-hkbd_emupad_buffer res EMUPAD_MAX_DEV
-hpad_emupad_buffer res EMUPAD_MAX_DEV
+if EMUPAD_MAX_PLAYER > 0
+hkbd_emupad_buffer res EMUPAD_MAX_PLAYER
+hpad_emupad_buffer res EMUPAD_MAX_PLAYER
 hpad_emupad_rule   res 1+MAX_DEVICES ' This is PER REAL DEVICE
 end
 
@@ -1354,11 +1411,10 @@ host_reset
                 wypin   #OUT_IDLE, dm
 
                 ' Handle Port protection enable and startup delay
-                mov     htmp, usb_event_pin             ' I/O + 1 pin is the Serial Host USB Protection enable/disable
-                add     htmp, #1                        ' Protection enable is a one-time operation
-                drvl    htmp                            ' disable port
+                cmp     usb_enable_pin, #0      wc
+        if_ae   drvl    usb_enable_pin                 ' disable port
                 waitx   _21ms_                          ' Wait a while for everything to turn off
-                drvh    htmp                            ' Enable the port
+        if_ae   drvh    usb_enable_pin                  ' Enable the port
                 waitx   _21ms_                          ' Hold to let the idle state get settled
 
                 setd    pa, #hreg_init_start            ' Reset all host common registers to startup values
@@ -1379,7 +1435,7 @@ discon_entry
                 setq    #(HIDPAD_REPORT_SIZE/4)*MAX_DEVICES - 1
                 wrlong  #0,pb
         end
-        if EMUPAD_MAX_DEV > 0
+        if EMUPAD_MAX_PLAYER > 0
                 loc     pb, #@emupad_reset - @usb_host_start
                 add     pb, hcog_base_addr
                 call    pb
@@ -1518,7 +1574,7 @@ hidle
         if_nc   jmp     #hidle                          ' Bus still IDLE
                 call    #wait_txn_ok
                 wypin   ##OUT_IDLE, dm                  ' Float USB
-                wxpin   #DEV_DISCONNECT, usb_event_pin  ' Notify client of disconnect
+                'wxpin  #DEV_DISCONNECT, usb_event_pin  ' Notify client of disconnect
                 jmp     #host_reset                     ' Device disconnected
 
 hsuspend
@@ -1680,9 +1736,9 @@ usb_host_init
                 drvl    host_error_led                  ' Ensure fatal error LED is inactive
         end
 
-                dirl    usb_event_pin                   ' Configure the USB event mailbox smart pin
-                wrpin   ##SP_REPO1_MODE, usb_event_pin  ' Mailbox smart pin output is enabled, so this pin# will raise
-                dirh    usb_event_pin                   ' IN at event post and OUT drives the Serial Host activity LED.
+                'dirl   usb_event_pin                   ' Configure the USB event mailbox smart pin
+                'wrpin  ##SP_REPO1_MODE, usb_event_pin  ' Mailbox smart pin output is enabled, so this pin# will raise
+                'dirh   usb_event_pin                   ' IN at event post and OUT drives the Serial Host activity LED.
 ' Configure and enable the Serial Host USB port.
                 jmp     #host_reset                     ' Initialize host and enter main processing loop
 
@@ -2148,7 +2204,7 @@ if _HAVE_GAMEPAD
         if_nz   mov     hdev_out_addr, ep_addr_pid
                 mov     ep_addr_pid, hctrl_ep_addr      ' Restore the control ep addr for mouse configuration
 
-                if EMUPAD_MAX_DEV > 0
+                if EMUPAD_MAX_PLAYER > 0
                 ' Find matching emupad rule
                 loc     ptra,#emupad_rule_buffer
                 mov     htmp1,#EMUPAD_MAX_RULES
@@ -2273,7 +2329,8 @@ end
                 altsb   hdev_port, #hdev_type
                 setbyte htmp2                           ' Save device ready
                 debug(uhex_long(hdev_type,hdev_type+1))
-        _ret_   wxpin   htmp2, usb_event_pin            ' Notify the client keyboard and/or mouse configured
+        '_ret_  wxpin   htmp2, usb_event_pin            ' Notify the client keyboard and/or mouse configured
+                ret
 
 '------------------------------------------------------------------------------
 ' Initialize the keyboard/mouse data area to start-up values.
@@ -2292,7 +2349,7 @@ init_kbdm_data
                 cmp     ptra, pa                wcz
         if_b    jmp     #.loop
         
-        if EMUPAD_MAX_DEV > 0
+        if EMUPAD_MAX_PLAYER > 0
                 call #emupad_reset
         end
 
@@ -2373,7 +2430,7 @@ hget_kbd_in_report
 
                 mov     kb_max_index, hpar3             ' Save actual bytes read
                 call    #hkbd_compare
-        if EMUPAD_MAX_DEV > 0
+        if EMUPAD_MAX_PLAYER > 0
                 setnib  hkbd_emupad_buffer+0,#1,#EMUPAD_TYPE_NIBBLE
                 call    #emupad_write_reports
         end
@@ -2485,7 +2542,7 @@ hkbd_translate
                 cmp     hpar1, #KEY_SCROLLLOCK  wz
   if_z_and_nc   bitnot  hkbd_ledstates, #LED_SCRLKB
 
-        if EMUPAD_MAX_DEV > 0
+        if EMUPAD_MAX_PLAYER > 0
                 cmp     hpar1,#EMUPAD_KB_UP wz
         if_z    bitnc   hkbd_emupad_buffer+0,#EMUPAD_UP_BIT
                 cmp     hpar1,#EMUPAD_KB_DOWN wz
@@ -3148,7 +3205,7 @@ hpad_translate
               wrlong hidr_usage,ptrb
         end
 
-        if EMUPAD_MAX_DEV > 0
+        if EMUPAD_MAX_PLAYER > 0
               call      #emupad_getnum
         if_nz jmp       #.emupad_slot_over
               mov       htmp3,retval
@@ -3196,63 +3253,63 @@ hpad_translate
         ' special MegaYume hack: distinguish 3-button controller 
               rdbyte    htmp,ptra++             wz
         if_z  setnib    retval,#2,#EMUPAD_TYPE_NIBBLE
-        if EMUPAD_BT0_BIT > 0
+        if EMUPAD_BT0_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT0_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT1_BIT > 0
+        if EMUPAD_BT1_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT1_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT2_BIT > 0
+        if EMUPAD_BT2_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT2_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT3_BIT > 0
+        if EMUPAD_BT3_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT3_BIT
         end
               rdbyte    htmp,ptra++             wz
         if_z  setnib    retval,#2,#EMUPAD_TYPE_NIBBLE
-        if EMUPAD_BT4_BIT > 0
+        if EMUPAD_BT4_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT4_BIT
         end
               rdbyte    htmp,ptra++             wz
         if_z  setnib    retval,#2,#EMUPAD_TYPE_NIBBLE
-        if EMUPAD_BT5_BIT > 0
+        if EMUPAD_BT5_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT5_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT6_BIT > 0
+        if EMUPAD_BT6_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT6_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT7_BIT > 0
+        if EMUPAD_BT7_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT7_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT8_BIT > 0
+        if EMUPAD_BT8_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT8_BIT
         end
               rdbyte    htmp,ptra++
-        if EMUPAD_BT9_BIT > 0
+        if EMUPAD_BT9_BIT >= 0
               cmpsub    htmp,#1 wc
               testb     hidr_buttons,htmp       andc
         if_c  bith      retval,#EMUPAD_BT9_BIT
@@ -3308,24 +3365,24 @@ hpad_translate
                 ret
 end
 
-if EMUPAD_MAX_DEV > 0
+if EMUPAD_MAX_PLAYER > 0
 '------------------------------------------------------------------------------
 ' Clear EmuPad state
 '------------------------------------------------------------------------------
 emupad_reset
               cmp emupad_out_ptr,#0 wz
         if_z  ret
-              setq #EMUPAD_MAX_DEV-1
+              setq #EMUPAD_MAX_PLAYER-1
               wrlong #0,emupad_out_ptr
-              setq #EMUPAD_MAX_DEV-1
+              setq #EMUPAD_MAX_PLAYER-1
               rdlong hkbd_emupad_buffer,emupad_out_ptr
-              setq #EMUPAD_MAX_DEV-1
+              setq #EMUPAD_MAX_PLAYER-1
         _ret_ rdlong hpad_emupad_buffer,emupad_out_ptr
 
 '------------------------------------------------------------------------------
 ' Get EmuPad Player number for current device (into retval)
 ' Z flag is also set if current device is valid
-' (Value may be larger than EMUPAD_MAX_DEV !)
+' (Value may be larger than EMUPAD_MAX_PLAYER !)
 '------------------------------------------------------------------------------
 emupad_getnum
               mov       htmp,#0
@@ -3339,7 +3396,7 @@ emupad_getnum
               cmp       htmp,hdev_port wc
         if_11 add       retval,#1
         if_b  ijnz      htmp,#.loop
-              cmp       retval,#EMUPAD_MAX_DEV wc
+              cmp       retval,#EMUPAD_MAX_PLAYER wc
         if_ae modz      _clr wz
               ret
 '------------------------------------------------------------------------------
@@ -3352,7 +3409,7 @@ emupad_discon
               sets      htmp1,retval
               add       htmp1,##(hpad_emupad_buffer<<9)|(hpad_emupad_buffer+1)
 .loop         
-              incmod    htmp,#EMUPAD_MAX_DEV-1 wc
+              incmod    htmp,#EMUPAD_MAX_PLAYER-1 wc
         if_c  alti      htmp1,#%000_111_000
         if_c  mov       0-0,#0
         if_nc alti      htmp1,#%000_111_111
@@ -3365,7 +3422,7 @@ emupad_discon
 ' Update EmuPad reports (all of them...)
 '------------------------------------------------------------------------------
 emupad_write_reports
-              mov       htmp,#EMUPAD_MAX_DEV
+              mov       htmp,#EMUPAD_MAX_PLAYER
               mov       ptra,emupad_out_ptr wz
         if_z  ret
               mov       htmp1,##(htmp2<<19)|(hkbd_emupad_buffer<<9)|(hpad_emupad_buffer)
@@ -3557,7 +3614,7 @@ hub_port_handler
         if_z    mov     hkbd_ctrl_ep, #0
         if_z    mov     kb_led_states, #0
         if_z    mov     hkbd_ledstates, kb_led_states
-        if EMUPAD_MAX_DEV > 0
+        if EMUPAD_MAX_PLAYER > 0
         if_z    mov     hkbd_emupad_buffer+0, #0 ' currently only 1 kb player
                 call    #emupad_getnum
                 call    #emupad_discon
@@ -3724,11 +3781,12 @@ keyq_data long 0[KEYQUEUE_SIZE]
 alignl
 end
 
-if EMUPAD_MAX_DEV > 0
+if EMUPAD_MAX_PLAYER > 0
 emupad_rule_buffer
-byte long $0F0D00C1, 2,  1,8,2,3,4,7,0,0,9,10 ' RetroBit 6-button controller
-byte long $0E6F1112, 2,  4,1,2,3,0,0,0,0,9,10 ' NeoGeo mini pad
-byte 0[(EMUPAD_MAX_RULES-2) * _EMUPAD_RULE_SIZE]
+if EMUPAD_BUILTIN_RULES
+file "padmap_builtin.dat"
+end
+byte 0[@emupad_rule_buffer + EMUPAD_MAX_RULES*_EMUPAD_RULE_SIZE - $]
 '' Default rule directly follows!
 byte long -1, 255, 1,2,3,4,5,6,7,8,9,10
 end
@@ -3777,6 +3835,8 @@ end
 urx_buff        byte    0[URX_BUFF_LEN]         ' USB IN DATAx scratch buffer
 dev_desc_buff   byte    0[DEV_DESC_LEN]         ' Device descriptor
 con_desc_buff   byte    0[CON_BUFF_LEN]         ' Configuration descriptor chain
+
+driver_cog      byte    0                       ' Current driver cog + 1
 
 CON ' USB Host Shared constants
 '------------------------------------------------------------------------------
