@@ -2141,7 +2141,7 @@ if HAVE_MOUSE
                 debug("mouse passed addr check")
 
                 loc     ptra, #get_desc                 ' Get HID descriptor
-                wrword  #$FF, ptra[wLength]
+                wrword  ##HID_DESCR_LEN, ptra[wLength]
                 wrword  ms_intf_num,ptra[wIndex]
                 call    #get_hid_descr_buffer
                 call    #control_read
@@ -2233,7 +2233,9 @@ if _HAVE_GAMEPAD
         if_e    jmp     #.ps3
 
                 loc     ptra, #get_desc                 ' Get HID descriptor
-                wrword  #$FF, ptra[wLength]
+                cmp     hdev_port,#0            wz
+        if_nz   wrword  ##HID_DESCR_LEN, ptra[wLength]
+        if_z    wrword  ##HID_DESCR_LEN*MAX_DEVICES, ptra[wLength] ' Hack: allow longer descriptor if on root port.
                 wrword  #0,ptra[wIndex] ' this breaks if not zero?
                 call    #get_hid_descr_buffer
                 call    #control_read
@@ -2842,6 +2844,8 @@ hpad_hid
                 cmp     hpar1, #HID_INPUT       wz
         if_nz   jmp     #.next
 
+                tjf     hidr_state,#.next
+
                 and     hpar2, #$03
                 cmp     hpar2, #HID_ITEM_VARIABLE   wz
         if_nz   jmp     #.skip
@@ -2903,9 +2907,11 @@ hpad_hid
 .report_id
                 cmp     hidr_id, #0     wz
         if_nz   ret     wcz
-                rdbyte  hidr_id, ptrb++
-                cmp     hidr_id, hpar2  wz
-        if_nz   ret
+                rdbyte  htmp, ptrb++
+                cmp     htmp, hpar2     wz
+        if_z    mov     hidr_id, htmp
+        if_nz   neg     hidr_state,#1
+        if_nz   sub     ptrb,#1
                 jmp     #.next
 .usage_page
                 cmp     hpar2, #HID_USAGE_PAGE_BUTTONS  wz
@@ -2934,6 +2940,8 @@ hpad_hid
         if_z    mov     hidr_state, #3
                 jmp     #.next
 .usage_axis
+                cmps    hidr_state, #1          wc
+        if_b    jmp     #.next
                 altsn   hidr_usage_idx, #hidr_usage
                 setnib  hpar2
 
@@ -2942,8 +2950,7 @@ hpad_hid
                 or      hidr_flags, hpar2
 
                 add     hidr_usage_idx, #1
-                cmp     hidr_state, #1      wz
-        if_z    mov     hidr_state, #2
+                mov     hidr_state, #2
                 jmp     #.next
 
 '------------------------------------------------------------------------------
@@ -3199,22 +3206,34 @@ hpad_normalize
 '------------------------------------------------------------------------------
 hpad_translate
 
+
         if HAVE_HIDPAD
-              loc ptrb,#hidpad_report
-              mov htmp,hdev_port
-              cmpsub htmp,#1
-              mul htmp,#HIDPAD_REPORT_SIZE
-              add ptrb,htmp
-              alts hdev_port,#hdev_id
-              mov hidr_usage,0-0 ' We can trash hidr_usage with the ID so we can do one atomic block write
-              setq #7-1
-              wrlong hidr_usage,ptrb
+                loc     ptrb,#hidpad_report
+                mov     htmp,hdev_port          wz
+        if_z    mov     htmp,hidr_id
+                cmpsub  htmp,#1
+        if_z    cmp     hidr_id, #MAX_DEVICES   wc
+        if_nz   cmp     hidr_id, #2             wc
+        if_ae   ret     wcz
+                mul     htmp, #HIDPAD_REPORT_SIZE
+                add     ptrb,htmp
+                alts    hdev_port,#hdev_id
+                mov     hidr_usage,0-0 ' We can trash hidr_usage with the ID so we can do one atomic block write
+                setq    #7-1
+                wrlong  hidr_usage,ptrb
         end
 
+
         if EMUPAD_MAX_PLAYER > 0
-              call      #emupad_getnum
-        if_nz jmp       #.emupad_slot_over
-              mov       htmp3,retval
+                call    #emupad_getnum
+        if_nz   jmp     #.emupad_slot_over
+                mov     htmp3,retval            wz
+        if_z    cmp     hdev_port, #0           wz
+        if_z    mov     htmp3,hidr_id
+        if_z    cmpsub  htmp3, #1
+                cmp     htmp3, #EMUPAD_MAX_PLAYER wc
+        if_ae   jmp     #.emupad_slot_over
+
               mov       retval,#0
 
               setnib    retval,#EMUPAD_TYPE_PAD,#EMUPAD_TYPE_NIBBLE
