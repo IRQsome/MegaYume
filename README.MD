@@ -1,6 +1,6 @@
 <h1 align="center">MegaYume
-<p style="font-size:0.7em">
--= SEGA MEGA DRIVE EMULATOR =-
+<p>
+<font size=4>-= SEGA MEGA DRIVE EMULATOR =-</font>
 </p>
 </h1>
 
@@ -15,7 +15,6 @@ Features include:
   - SRAM save support
   - Video output over VGA, HDMI, YPbPr, S-video, Composite or 6bit RGB bus (ILI9342 LCD)
   - USB input (Keyboard and select gamepads, see below) or direct hookup to discrete switches.
-  - Buuuuggggssss!!
 
 See the issues section of this GitHub repository for known issues.
 
