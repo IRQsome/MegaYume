@@ -14,7 +14,7 @@ Features include:
   - 6 button controller support
   - SRAM save support
   - Video output over VGA, HDMI, YPbPr, S-video, Composite or 6bit RGB bus (ILI9342 LCD)
-  - USB input (Keyboard and select gamepads, see below) or direct hookup to discrete switches.
+  - USB input (Keyboard and gamepads, see below) or direct hookup to discrete switches.
 
 See the issues section of this GitHub repository for known issues.
 
@@ -62,6 +62,10 @@ If you want to download some freeware ROMs to play around with, here's a couple:
 |||
 |-|-|
 |`config.spin2`|User config include file|
+|`RAMCONFIG.MD`|External memory configuration guide|
+|`build.sh`|Standard build script|
+|`build_gbrk.sh`|Build script for core debugging|
+|`build_comptest.sh`|Build script for compiler testing|
 |`megayume_lower.spin2`|Assembly language emulation core (68000,Z80,VDP,Audio,glue)|
 |`megayume_upper.spin2`|Spin2 upstart code and GUI|
 |`fsadapter.c`|File system helper functions|
@@ -73,8 +77,9 @@ If you want to download some freeware ROMs to play around with, here's a couple:
 |`cram_tablegen.rb`|Can generate the above|
 |`padmap_builtin.dat`|Compiled builtin gamepad maps|
 |`padmap_builtin.rb`|Can generate the above|
-|`build.sh`|Standard build script|
-|`build_gbrk.sh`|Build script for core debugging|
+|`FUNSCII.DAT`|main UI font (funscii 8x8)|
+|`MISAKI4W.DAT`|JIS font, half-width part (Misaki Gothic 2nd)|
+|`MISAKI8W.DAT`|JIS font, full-width part (Misaki Gothic 2nd)|
 |`memstuff`|Various (mostly outdated) things to do with external memory|
 
 ## USB Controllers
