@@ -1,6 +1,6 @@
 <h1 align="center">MegaYume
 <p>
-<font size=4>-= SEGA MEGA DRIVE EMULATOR =-</font>
+<sub>-= SEGA MEGA DRIVE EMULATOR =-</sub>
 </p>
 </h1>
 
