@@ -4,6 +4,9 @@ CON
 '' This can be defined to skip game selection
 '#define DIRECT_BOOT "/sd/MEGAYUME/SONIC2.BIN"
 
+'' Allow $FC000 parameter passing.
+USE_ARGV = true
+
 '' if ROM supports both overseas 60Hz (USA) or domestic 60Hz (Japan) regions, this decides which one to use.
 '' (50Hz overseas is always the third choice)
 PREFER_OVERSEAS = true
