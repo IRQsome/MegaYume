@@ -86,6 +86,8 @@ AUDIO_RIGHT = AUDIO_LEFT + 1
 
 '' USB Keyboard/gamepad pins.
 USB0_BASEPIN = 16
+ENABLE_PIN   = 1              ' USB object enables port voltage protection
+DM_PIN       = 2              ' Add to BASEPIN
 
 
 '' Discrete pin inputs
