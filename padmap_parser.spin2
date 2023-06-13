@@ -1,3 +1,9 @@
+OBJ {{
+PADMAP.TXT parser library for usbnew EmuPad.
+
+See spec here: https://github.com/Wuerfel21/usbnew/wiki/PADMAP.TXT-Format-and-the-reference-gamepad
+
+}}
 CON
 
   MAX_BUTTONS = 10
@@ -11,17 +17,15 @@ VAR
   long unget_chr,last_chr
   long get_func,get_arg
 
-PRI getc() : chr
-  if (chr:=unget_chr) >= 0
-    unget_chr := -1 ' Technically conflicts with EOF but doesn't matter
-    last_chr := chr
-    return
-  else
-    return last_chr := get_func(get_arg):1
-
-PRI unget()
-  unget_chr := last_chr
-
+'' Parse gamepad map rules
+''  
+''  buffer_ptr: Pointer to usbnew's rule buffer
+''  buffer_max: Value of EMUPAD_MAX_RULES
+''  get_function: Method pointer for reading from the File.
+''                MUST return -1 at end of file.
+''  get_argument: Opaque argument passed to get_function (normally this is your FILE object)
+''  appname: Your application name as a string pointer. ASCII letters and numbers only.
+''
 PUB parse(buffer_ptr,buffer_max,get_function,get_argument,appname)
   unget_chr := -1
   get_func := get_function
@@ -115,3 +119,14 @@ PRI skip_line() | chr
     chr := getc()
     if chr < 0 || chr == CR || chr == LF
       quit
+
+PRI getc() : chr
+  if (chr:=unget_chr) >= 0
+    unget_chr := -1 ' Technically conflicts with EOF but doesn't matter
+    last_chr := chr
+    return
+  else
+    return last_chr := get_func(get_arg):1
+
+PRI unget()
+  unget_chr := last_chr
