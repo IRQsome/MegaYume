@@ -14,7 +14,7 @@ Features include:
   - 6 button controller support
   - SRAM save support
   - Video output over VGA, HDMI, YPbPr, S-video, Composite or 6bit RGB bus (ILI9342 LCD)
-  - USB input (Keyboard and gamepads, see below) or direct hookup to discrete switches.
+  - Low-latency USB input (Keyboard and gamepads, see below) or direct hookup to discrete switches.
 
 See the issues section of this GitHub repository for known issues.
 
