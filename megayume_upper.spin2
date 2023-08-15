@@ -121,7 +121,7 @@ coginit(COGEXEC_NEW,long[$28],0)
 
 menu_vdp_init()
 msgbox_simple(@"Mounting storage...")
-_mount(@"/sd",c._vfs_open_sdcard())
+_mount(@"/sd",c._vfs_open_sdcardx(SDCARD_CLK,SDCARD_SELECT,SDCARD_DI,SDCARD_DO))
 #ifdef INPUT_USE_USB
 usb.set_emupad_ptr($40)
 tmp := c.fopen(@"/sd/PADMAP.TXT",@"r")
