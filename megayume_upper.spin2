@@ -565,9 +565,7 @@ if PSRAM_BANKS > 1
   pinh((PSRAM_SELECT+1) addpins (PSRAM_BANKS-2))
 #endif
 
-#ifdef USE_PSRAM16
-long[tmp][4] := PSRAM_BASE
-#elseifdef USE_PSRAM4
+#ifdef USE_PSRAM_EITHER
 long[tmp][4] := PSRAM_BASE
 #elseifdef USE_HYPER
 long[tmp][4] := HYPER_BASE
@@ -585,7 +583,7 @@ long[banks][0] := 512<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DAT
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_PSRAM8
 long[banks][0] := 256<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
-long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8 + PSRAM_SELECT<<16
+long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8
 #elseifdef USE_PSRAM4
 long[banks][0] := 128<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DATA?0:1)<<12 + 22
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8 + PSRAM_SELECT<<16
