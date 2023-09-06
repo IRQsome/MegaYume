@@ -57,31 +57,6 @@ If you want to download some freeware ROMs to play around with, here's a couple:
  - Runes: https://cannibalcat.itch.io/runes
  - 240p Test Suite (test pattern generator): https://artemiourbina.itch.io/240p-test-suite
 
-## Project Files
-
-|||
-|-|-|
-|`config.spin2`|User config include file|
-|`RAMCONFIG.MD`|External memory configuration guide|
-|`build.sh`|Standard build script|
-|`build_gbrk.sh`|Build script for core debugging|
-|`build_comptest.sh`|Build script for compiler testing|
-|`megayume_lower.spin2`|Assembly language emulation core (68000,Z80,VDP,Audio,glue)|
-|`megayume_upper.spin2`|Spin2 upstart code and GUI|
-|`fsadapter.c`|File system helper functions|
-|`MegaVGA.spin2`|Custom video driver|
-|`usbnew.spin2`|USB Input driver|
-|`padmap_parser.spin2`|PADMAP.TXT parser|
-|`OPN2_ROM.DAT`|YM2612 quarter-sine and antilog ROM|
-|`CRAM2RGB.DAT`|CRAM to truecolor expansion table|
-|`cram_tablegen.rb`|Can generate the above|
-|`padmap_builtin.dat`|Compiled builtin gamepad maps|
-|`padmap_builtin.rb`|Can generate the above|
-|`FUNSCII.DAT`|main UI font (funscii 8x8)|
-|`MISAKI4W.DAT`|JIS font, half-width part (Misaki Gothic 2nd)|
-|`MISAKI8W.DAT`|JIS font, full-width part (Misaki Gothic 2nd)|
-|`memstuff`|Various (mostly outdated) things to do with external memory|
-
 ## USB Controllers
 
 Many different kinds of USB controller are supported. For multiplayer, a USB Hub must be used.
@@ -91,7 +66,7 @@ The default input map is as follows:
 |MegaDrive button|Keyboard (QWERTY)|Generic Gamepad|XInput / PS3       |RetroBit 6-button|Neo Geo mini     |
 |---------------:|:----------------|:--------------|:------------------|:----------------|:----------------|
 |Directions      |Arrow Keys       |X/Y axes or Hat|Left stick or D-Pad|D-Pad            |D-Pad            |
-|A               |x                |Button 4       |X / Square         |A                |A                |
+|A               |X                |Button 4       |X / Square         |A                |A                |
 |B               |C                |Button 3       |A / Cross          |B                |B                |
 |C               |V                |Button 2       |B / Circle         |C                |D                |
 |Start           |Enter            |Button 10      |Start / Start      |Start            |Start            |
@@ -123,3 +98,28 @@ Keyboard controls can currently not be reconfigured (except by editing the sourc
 
 MegaYume uses a modified version of usbnew for usb input support, see [the usbnew wiki](https://github.com/Wuerfel21/usbnew/wiki) for info on further information on device compatibility.
 
+
+## Project Files
+
+|||
+|-|-|
+|`config.spin2`|User config include file|
+|`RAMCONFIG.MD`|External memory configuration guide|
+|`build.sh`|Standard build script|
+|`build_gbrk.sh`|Build script for core debugging|
+|`build_comptest.sh`|Build script for compiler testing|
+|`megayume_lower.spin2`|Assembly language emulation core (68000,Z80,VDP,Audio,glue)|
+|`megayume_upper.spin2`|Spin2 upstart code and GUI|
+|`fsadapter.c`|File system helper functions|
+|`MegaVGA.spin2`|Custom video driver|
+|`usbnew.spin2`|USB Input driver|
+|`padmap_parser.spin2`|PADMAP.TXT parser|
+|`OPN2_ROM.DAT`|YM2612 quarter-sine and antilog ROM|
+|`CRAM2RGB.DAT`|CRAM to truecolor expansion table|
+|`cram_tablegen.rb`|Can generate the above|
+|`padmap_builtin.dat`|Compiled builtin gamepad maps|
+|`padmap_builtin.rb`|Can generate the above|
+|`FUNSCII.DAT`|main UI font (funscii 8x8)|
+|`MISAKI4W.DAT`|JIS font, half-width part (Misaki Gothic 2nd)|
+|`MISAKI8W.DAT`|JIS font, full-width part (Misaki Gothic 2nd)|
+|`memstuff`|Various (mostly outdated) things to do with external memory|
