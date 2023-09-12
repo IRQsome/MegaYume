@@ -1969,8 +1969,7 @@ hparse_con_desc
         if_z    jmp     #.hub
                 cmp     hdev_class, #CLASS_HID              wz
         if_nz   jmp     #.next_intf                     ' No HID class, ignore
-                cmp     hdev_subclass, #SUBCLASS_INTF_NONE  wz
-        if_z    cmp     hdev_protocol, #INTF_PROTO_NONE     wz
+                cmp     hdev_protocol, #INTF_PROTO_NONE     wz
         if_z    jmp     #.gamepad
                 cmp     hdev_subclass, #SUBCLASS_INTF_BOOT  wz
         if_nz   jmp     #.next_intf                     ' No BOOT subclass, ignore
