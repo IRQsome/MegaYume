@@ -1633,11 +1633,10 @@ mk_dobranch
               debug("Sussy branch from ",uhex_long_(mk_optmp0)," to ",uhex_long_(mk_virtualpc),uhex_long(mk_a4,mk_a6,mk_d3),uhex_long_array(#@main_ram+$1510,#1))
 .not_a_sussy_baka '}
               'debug("branching ",shex(mk_branchdisplace)," to ",uhex_long(mk_virtualpc))
-              testb mk_virtualpc,#0 wc
+              sar mk_branchdisplace,#1 wc
         if_c  jmp #mk_address_error_debug ' TODO: maybe make AE function code read program in this case?
               tjz ptra,#.notfast ' if que not active, this isn't relevant
               ' see if fast branch within que is ok
-              sar mk_branchdisplace,#1
               sub mk_romque_left,mk_branchdisplace
               cmp mk_romque_left,#MK_ROMQUE_SIZE+1 wc ' see below
               'debug("would be ",sdec(mk_romque_left))
@@ -1893,7 +1892,6 @@ mk_address_error ' can basically only happen due to misalignment?
               'jmp #$
               ' get vector
               rdlong mk_branchdisplace,##mk_vectorcache+$0C
-              sub mk_branchdisplace,mk_virtualpc
               mov mk_optmp1,mk_effaddr ' save for later
               ' set supervisor mode, unset trace mode
               mov mk_optmp2,mk_sr
@@ -1934,6 +1932,8 @@ mk_address_error ' can basically only happen due to misalignment?
               testb mk_optmp2,#MK_SUPER_BIT wc
               bitc mk_memvalue,#2 ' we do know what mode we were in though
               call mk_writef
+              mov ptra,#0 ' force reset ROM que
+              mov mk_virtualpc,#0 ' force reset PC to avoid double fault
               jmp #mk_dobranch
 
 
