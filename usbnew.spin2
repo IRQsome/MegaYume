@@ -1,6 +1,5 @@
 {{
-    "USBNEW" modular USB input driver - v1.0.0-rc1
-    MEGAYUME SPECIAL VERSION DO NOT USE UNLESS YOU KNOW WHAT YOU'RE DOING
+    "USBNEW" modular USB input driver - v1.1.0
 
     By Ada Gottensträter ("Wuerfel_21")
 
@@ -31,8 +30,7 @@ CON
   HAVE_MOUSE = false
 
   HAVE_HIDPAD = false ' Set to false to disable HidPad inteface
-  HIDPAD_REPORT_SIZE = 7*4 ' do not change!
-  HIDPAD_DEVICES = 4 ' do not change!
+  HIDPAD_REPORT_SIZE = 8*4 ' do not change!
 
   EMUPAD_MAX_PLAYER = 0 ' Set to 0 to disable EmuPad interface
   EMUPAD_MAX_RULES = 32
@@ -218,28 +216,28 @@ PUB hidpad_id(dev) : r
 
 '' Get device capabilites. These are often false-positive.
 '' (i.e. axis marked as valid, but not physically extant on device)
-'' xxxxxxxx_xxrrrzyx_hhhhaaaa_bbbbbbbb
-''            zyx||| |||||||| ++++++++ n. buttons
-''            |||||| ||||++++--------- n. axes
-''            |||||| ++++------------- n. hats
-''            ++++++------------------ valid axes
+'' xxxxxxxx_xsrrrzyx_hhhhaaaa_bbbbbbbb
+''           lzyx||| |||||||| ++++++++ n. buttons
+''           ||||||| ||||++++--------- n. axes
+''           ||||||| ++++------------- n. hats
+''           +++++++------------------ valid axes
 PUB hidpad_getcaps(dev) : r
   return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][1]
 
 '' Get all button states for a device
 PUB hidpad_buttons(dev) : r 
-  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][5]
+  return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][6]
 
 '' Get state of one button
 PUB hidpad_button(dev,bnum) : r
   if bnum +>= 32
     return false
   else
-    return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][5].[bnum]
+    return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][6].[bnum]
 
 '' Get state of an axis (normalized between -32768 and 32767)
 PUB hidpad_axis(dev,axnum) : r
-  if axnum +>= 6
+  if axnum +>= 8
     return 0
   else 
     return word[@hidpad_report+dev*HIDPAD_REPORT_SIZE][4+axnum] signx 15
@@ -249,7 +247,7 @@ PUB hidpad_hat(dev,hatnum) : r
   if hatnum +>= 4
     return 0
   else 
-    return byte[@hidpad_report+dev*HIDPAD_REPORT_SIZE][6*4+hatnum]
+    return byte[@hidpad_report+dev*HIDPAD_REPORT_SIZE][7*4+hatnum]
 
 OBJ '' EmuPad API
     '' Set EMUPAD_MAX_PLAYER to enable
@@ -922,19 +920,20 @@ hreg_init_end
 hidr_start
 hidr_usage      res     1 ' <- can get trashed after parsing
 hidr_flags      res     1
-hidr_axis       res     3
+hidr_axis       res     4
 hidr_buttons    res     1
 hidr_hats       res     1
 '' Above are actually useful values, 6 longs
+hidr_type       res     1
 hidr_id         res     1
+hidr_offset     res     1
+hidr_usage_idx  res     1
+' below need to be push/pop'd
 hidr_state      res     1
 hidr_size       res     1
 hidr_count      res     1
-hidr_offset     res     1
-hidr_usage_idx  res     1
 hidr_lminmax    res     1
 hidr_pminmax    res     1
-hidr_type       res     1
 hidr_end
 
 ' Variables dependent on the system freqency
@@ -2811,9 +2810,11 @@ hpad_hid
                 and     htmp, #$03
                 cmp     htmp, #1    wz
         if_z    rdbyte  hpar2, ptra++
+        if_z    signx   hpar2,#7
         if_z    sub     pa, #1
                 cmp     htmp, #2    wz
         if_z    rdword  hpar2, ptra++
+        if_z    signx   hpar2,#15
         if_z    sub     pa, #2
                 cmp     htmp, #3    wz
         if_z    rdlong  hpar2, ptra++
@@ -2840,6 +2841,9 @@ hpad_hid
         if_z    mov     hidr_size, hpar2
                 cmp     hpar1, #HID_REPORT_COUNT wz
         if_z    mov     hidr_count, hpar2
+                cmp     hpar1, #HID_POP wcz
+        if_nz   cmp     hpar1, #HID_PUSH wz
+        if_z    jmp     #.pushpop ' Entering with C set if PUSH  
                 cmp     hpar1, #HID_INPUT       wz
         if_nz   jmp     #.next
 
@@ -2869,7 +2873,7 @@ hpad_hid
                 mov     hpar2, hidr_size
                 call    #hpad_getbits
                 call    #hpad_normalize
-                cmp     hr0, #6         wcz
+                cmp     hr0, #8         wcz
         if_b    altgn   hr0, #hidr_usage
         if_b    getnib  hr2
         if_b    altsw   hr2, #hidr_axis
@@ -2927,13 +2931,9 @@ hpad_hid
         if_z    cmp     hidr_type,#M_READY          wz
         if_z    mov     hidr_state, #1
         if_z    jmp     #.next
-                cmp     hpar2, #HID_USAGE_X     wz
-        if_nz   cmp     hpar2, #HID_USAGE_Y     wz
-        if_nz   cmp     hpar2, #HID_USAGE_Z     wz
-        if_nz   cmp     hpar2, #HID_USAGE_RX    wz
-        if_nz   cmp     hpar2, #HID_USAGE_RY    wz
-        if_nz   cmp     hpar2, #HID_USAGE_RZ    wz
-        if_z    jmp     #.usage_axis
+                cmp     hpar2, #HID_USAGE_X     wc
+        if_nc   cmpr    hpar2, #HID_USAGE_WHEEL wc   
+        if_nc   jmp     #.usage_axis
                 cmp     hpar2, #HID_USAGE_HATSWITCH wz
         if_z    cmp     hidr_state, #1      wz
         if_z    mov     hidr_state, #3
@@ -2945,12 +2945,20 @@ hpad_hid
                 setnib  hpar2
 
                 sub     hpar2, #HID_USAGE_X - 16
-                decod   hpar2
-                or      hidr_flags, hpar2
+                bith    hidr_flags, hpar2
 
                 add     hidr_usage_idx, #1
                 mov     hidr_state, #2
                 jmp     #.next
+.pushpop
+                ' Entering with C set if PUSH  
+                loc     pb, #hid_stack
+        if_c    setq    #(hidr_end-hidr_state)-1
+        if_c    wrlong  hidr_state, pb
+        if_nc   setq    #(hidr_end-hidr_state)-1
+        if_nc   rdlong  hidr_state, pb
+                jmp     #.next
+        
 
 '------------------------------------------------------------------------------
 ' Handle XInput controller
@@ -3165,9 +3173,8 @@ hpad_normalize
                 getword htmp1, htmp, #1     ' htmp1 = min
                 getword htmp, htmp, #0      ' htmp = max
                 signx   htmp1, #15      wc
-        if_c    sub     hidr_size, #1
-        if_c    signx   retval, hidr_size
-        if_c    add     hidr_size, #1
+        if_c    alts    hidr_size, #511
+        if_c    signx   retval, #0-0
                 subs    htmp, htmp1         ' htmp = (max - min)
                 subs    retval, htmp1       ' retval = (retval - min)
                 shl     retval, #16         ' retval = (retval - min) << 16
@@ -3192,16 +3199,18 @@ hpad_normalize
 '                     RX = hidr_axis+1, #1
 '                     RY = hidr_axis+2, #0
 '                     RZ = hidr_axis+2, #1
+'                     Sl = hidr_axis+3, #0
+'                     Wh = hidr_axis+3, #1
 '    hidr_buttons   buttons state (bits 0 to 31)
 '    hidr_hats      hats state (byte 0, 1, 2, 3)
 '
 '                     -------3 -------2 -------1 -------0 byte
 '                     ---7---6 ---5---4 ---3---2 ---1---0 nibble
-'    hidr_flags       xxxxxxxx_xxrrrzyx_hhhhaaaa_bbbbbbbb
-'                                zyx||| |||||||| ++++++++ n. buttons
-'                                |||||| ||||++++--------- n. axes
-'                                |||||| ++++------------- n. hats
-'                                ++++++------------------ valid axes
+'    hidr_flags       xxxxxxxx_wsrrrzyx_hhhhaaaa_bbbbbbbb
+'                              hlzyx||| |||||||| ++++++++ n. buttons
+'                              |||||||| ||||++++--------- n. axes
+'                              |||||||| ++++------------- n. hats
+'                              ++++++++------------------ valid axes
 '------------------------------------------------------------------------------
 hpad_translate
 
@@ -3218,7 +3227,7 @@ hpad_translate
                 add     ptrb,htmp
                 alts    hdev_port,#hdev_id
                 mov     hidr_usage,0-0 ' We can trash hidr_usage with the ID so we can do one atomic block write
-                setq    #7-1
+                setq    #8-1
                 wrlong  hidr_usage,ptrb
         end
 
@@ -3828,6 +3837,8 @@ hkbd_report     byte    0[8]
 hkbd_led_rep    byte    0
 alignl
 
+hid_stack       long 0[(hidr_end - hidr_state) * 1]
+
 if HAVE_HIDPAD
 hidpad_report   byte    0[MAX_DEVICES*HIDPAD_REPORT_SIZE]
 end
@@ -4278,6 +4289,8 @@ CON ' USB Descriptor Definitions
     HID_INPUT           = $80
     HID_REPORT_ID       = $84
     HID_OUTPUT          = $90
+    HID_PUSH            = $A4
+    HID_POP             = $B4
 
 ' HID Report Usage Pages from HID Usage Tables 1.12 Section 3, Table 1
     HID_USAGE_PAGE_GENERIC_DESKTOP = $01
@@ -4324,6 +4337,8 @@ CON ' USB Descriptor Definitions
     HID_AXIS_RX  = 16+3
     HID_AXIS_RY  = 16+4
     HID_AXIS_RZ  = 16+5
+    HID_AXIS_SL  = 16+6
+    HID_AXIS_WH  = 16+6
 
 ' Keyboard keys
 '-------------
