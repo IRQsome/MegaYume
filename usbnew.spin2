@@ -1,5 +1,5 @@
 {{
-    "USBNEW" modular USB input driver - v1.1.0
+    "USBNEW" modular USB input driver - v1.1.1
 
     By Ada Gottensträter ("Wuerfel_21")
 
@@ -216,11 +216,11 @@ PUB hidpad_id(dev) : r
 
 '' Get device capabilites. These are often false-positive.
 '' (i.e. axis marked as valid, but not physically extant on device)
-'' xxxxxxxx_xsrrrzyx_hhhhaaaa_bbbbbbbb
-''           lzyx||| |||||||| ++++++++ n. buttons
-''           ||||||| ||||++++--------- n. axes
-''           ||||||| ++++------------- n. hats
-''           +++++++------------------ valid axes
+'' xxxxxxxx_wsrrrzyx_hhhhaaaa_bbbbbbbb
+''          hlzyx||| |||||||| ++++++++ n. buttons
+''          |||||||| ||||++++--------- n. axes
+''          |||||||| ++++------------- n. hats
+''          ++++++++------------------ valid axes
 PUB hidpad_getcaps(dev) : r
   return long[@hidpad_report+dev*HIDPAD_REPORT_SIZE][1]
 
@@ -2071,6 +2071,7 @@ hset_config
                 mov     pa, #CON_bConfigVal             ' Get configuration value to set (always the default config in our case)
                 add     pa, hconfig_base
                 rdbyte  hpar1, pa
+                debug("SetConfiguration: ",udec_(hpar1))
                 wrword  hpar1, ptra[wValue]             ' Write the config value to the config SETUP struct
                 mov     ep_addr_pid, hctrl_ep_addr      ' All configuration transactions use the control endpoint
                 mov     pb, #0                          ' SetConfiguration() has no data stage
@@ -2195,6 +2196,7 @@ if _HAVE_GAMEPAD
 
                 alts    hdev_port, #hdev_ep_addr
                 mov     ep_addr_pid, 0-0
+                setbyte ep_addr_pid, #PID_IN, #0
                 call    #calc_crc5                      ' One-time calculation of the ep/addr/pid crc
                 testb   hub_port_status, #HUB_PORT_LOWSPEED wc
                 bitc    ep_addr_pid, #31
@@ -2244,7 +2246,7 @@ if _HAVE_GAMEPAD
                 altd    hdev_port, #gp_descr_len
                 mov     0-0, total_data
                 call    #get_hid_descr_buffer
-                debug(uhex(pb),uhex_byte_array(pb,total_data))
+                debug(uhex(pb),udec(total_data),uhex_byte_array(pb,total_data))
 
                 mov     htmp2, #HID_READY               ' Standard gamepad
                 jmp     #.notify_client
@@ -2259,8 +2261,16 @@ if _HAVE_GAMEPAD
                 mov     pkt_data, #3
                 bitl    hstatus, #DATAx_TGLB
                 mov     ep_addr_pid, hdev_out_addr
+                debug("XInput LED set ",uhex_long(ep_addr_pid),uhex_byte(pb))
                 call    #txn_out
                 mov     ep_addr_pid, hctrl_ep_addr
+
+                loc     ptra, #xinp_fix_8bitdo
+                mov     pb, urx_buff_p          ' We don't actually care where it goes
+                call    #control_read           ' Execute GetDeviceDescriptor()
+                debug("8bitdo weird fix... ",uhex(retval))
+                mov retval,#PID_ACK             ' If we don't do this something else becomes sad (TODO fix?)
+
 
                 mov     htmp2, #XINPUT_READY
                 jmp     #.notify_client
@@ -3799,6 +3809,14 @@ xinp_rumble_cmd byte    $00, $08, $00
                 byte    $00             ' Left rumble
                 byte    $00             ' Right rumble
                 byte    $00, $00, $00
+
+xinp_fix_8bitdo '' This inexplicable String request (that WILL fail) somehow un-bugs the terrible firmware
+                '' of certain wired 8bitdo gamepads.
+                byte    (DIR_DEV_TO_HOST | TYPE_STANDARD | RECIP_DEVICE)
+                byte    REQ_GET_DESC
+                word    TYPE_STRING << 8 + 4
+                word    $0409   ' Zero or Language ID (Section 9.6.7)
+                word    2       ' Number of bytes to transfer if there is a data stage
 end
 alignl
 
