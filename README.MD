@@ -92,7 +92,7 @@ A mapping is detected as a 6-button controller if X, Y and Z are all mapped.
 
 Mappings for the NeoGeo mini controller (ID 0E6F1112) and RetroBit USB controllers (ID 0F0D00C1) are built-in to MegaYume, but can still be overridden using a PADMAP.TXT rule.
 
-For more information, see [the usbnew documentation](https://github.com/Wuerfel21/usbnew/wiki/PADMAP.TXT-Format-and-the-reference-gamepad).
+For more information on PADMAP.TXT, see [the usbnew documentation](https://github.com/Wuerfel21/usbnew/wiki/PADMAP.TXT-Format-and-the-reference-gamepad).
 
 Keyboard controls can currently not be reconfigured (except by editing the source code). The keyboard always controls Player 1, independently of any connected game controllers.
 

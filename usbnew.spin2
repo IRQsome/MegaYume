@@ -1,5 +1,5 @@
 {{
-    "USBNEW" modular USB input driver - v1.1.1
+    "USBNEW" modular USB input driver - v1.1.2
 
     By Ada Gottensträter ("Wuerfel_21")
 
@@ -1422,17 +1422,16 @@ host_reset
         if_ae   drvh    usb_enable_pin                  ' Enable the port
                 waitx   _21ms_                          ' Hold to let the idle state get settled
 
-                setd    pa, #hreg_init_start            ' Reset all host common registers to startup values
-                rep     @.regloop,#hreg_init_end - hreg_init_start
-                alti    pa, #%000_111_000
-                mov     0-0, #0
-.regloop
-
                 'call #dev_reset ' TODO THINK ABOUT THIS
 
 discon_entry
                 mov     mod_cnt, #3                     ' Make the first heartbeat pulse a short one
 
+                setd    pa, #hreg_init_start            ' Reset all host common registers to startup values
+                rep     @.regloop,#hreg_init_end - hreg_init_start
+                alti    pa, #%000_111_000
+                mov     0-0, #0
+.regloop
               
         if HAVE_HIDPAD
                 loc     pb, #@hidpad_report - @usb_host_start
@@ -1580,7 +1579,7 @@ hidle
                 call    #wait_txn_ok
                 wypin   ##OUT_IDLE, dm                  ' Float USB
                 'wxpin  #DEV_DISCONNECT, usb_event_pin  ' Notify client of disconnect
-                jmp     #host_reset                     ' Device disconnected
+                jmp     #discon_entry                   ' Device disconnected
 
 hsuspend
                 call    #wait_txn_ok                    ' Avoid a potential collision with an active frame isr
@@ -2986,7 +2985,7 @@ hpad_xinput
                 cmp     htmp, #$14      wz
         if_nz   ret                         ' Ignore report length <> $14 (20)
 
-                debug(udec(hdev_port), " XINPUT ", uhex_long(ep_addr_pid),uhex_long(ptrb))
+                'debug(udec(hdev_port), " XINPUT ", uhex_long(ep_addr_pid),uhex_long(ptrb))
 
                 bith    hidr_flags, #HID_AXIS_X addbits 5 ' Have all axes
                 setnib  hidr_flags, #6, #2
