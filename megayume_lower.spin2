@@ -3709,7 +3709,7 @@ vdpr_vscroll_getter
               add vdpr_tmp4,vdpr_tileline_offset
         if_c  xor vdpr_tmp4,vdpr_tileline_mask'#7<<2
               add vdpr_tmp4,vdpr_vramptr ' Tile data address!
-              rdlong vdpr_tiledata,vdpr_tmp4
+              rdlong vdpr_tilebuffer1,vdpr_tmp4
 
               ' rogloh's optimized variant...
 
@@ -3720,25 +3720,22 @@ vdpr_vscroll_getter
               movbyts vdpr_tmp1, #%%0000
 
               testb vdpr_tile, #11 wc ' mirror bit
-    if_nc     splitb vdpr_tiledata ' reverse nibbles in tile
-    if_nc     rev vdpr_tiledata
-    if_nc     movbyts vdpr_tiledata, #%%0123
-    if_nc     mergeb vdpr_tiledata
+    if_nc     splitb vdpr_tilebuffer1 ' reverse nibbles in tile
+    if_nc     rev vdpr_tilebuffer1
+    if_nc     movbyts vdpr_tilebuffer1, #%%0123
+    if_nc     mergeb vdpr_tilebuffer1
 
               ' bit magic (space out nybbles)
-              getword vdpr_tilebuffer1, vdpr_tiledata, #1    ' first group
               movbyts vdpr_tilebuffer1, #%%3120
               mergew vdpr_tilebuffer1
               movbyts vdpr_tilebuffer1, #%%3120
               splitw vdpr_tilebuffer1
-              getword vdpr_tilebuffer2, vdpr_tiledata, #0    ' second group
-              movbyts vdpr_tilebuffer2, #%%3120
-              mergew vdpr_tilebuffer2
-              movbyts vdpr_tilebuffer2, #%%3120
-              splitw vdpr_tilebuffer2
-
-              or vdpr_tilebuffer1,vdpr_tmp1
-              or vdpr_tilebuffer2,vdpr_tmp1
+              mov vdpr_tilebuffer2,vdpr_tilebuffer1
+              shr vdpr_tilebuffer1,#4
+              
+              setq vdpr_uppernibbles
+              muxq vdpr_tilebuffer1,vdpr_tmp1
+              muxq vdpr_tilebuffer2,vdpr_tmp1
 
               'setq #1
               'wrlong vdpr_tilebuffer1,ptra++
@@ -3758,6 +3755,9 @@ vdpr_vscroll_getter_window if_always and vdpr_current_vscroll,#0
 vdpr_pixnibtest       long 15<<0,15<<8,15<<16,15<<24
 
 vdpr_maskingtest      long $01FF_0000
+
+vdpr_uppernibbles     long $F0F0F0F0
+vdpr_lowernibbles     long $0F0F0F0F
 
 vdpr_curline            long 0
 vdpr_curframe           long 0
@@ -4076,7 +4076,7 @@ vdpr_doSpriteDraw
         if_c  jmp #.skiptile
 
 
-              rdlong vdpr_tiledata,vdpr_tmp4
+              rdlong vdpr_tilebuffer1,vdpr_tmp4
 
               ' rogloh's optimized variant...
 
@@ -4085,22 +4085,20 @@ vdpr_doSpriteDraw
               shr vdpr_tmp1, #13 ' Just pal+priority
 
               testb vdpr_tile, #11 wc ' mirror bit
-    if_nc     splitb vdpr_tiledata ' reverse nibbles in tile
-    if_nc     rev vdpr_tiledata
-    if_nc     movbyts vdpr_tiledata, #%%0123
-    if_nc     mergeb vdpr_tiledata
+    if_nc     splitb vdpr_tilebuffer1 ' reverse nibbles in tile
+    if_nc     rev vdpr_tilebuffer1
+    if_nc     movbyts vdpr_tilebuffer1, #%%0123
+    if_nc     mergeb vdpr_tilebuffer1
 
               ' bit magic (space out nybbles)
-              getword vdpr_tilebuffer1, vdpr_tiledata, #1    ' first group
               movbyts vdpr_tilebuffer1, #%%3120
               mergew vdpr_tilebuffer1
               movbyts vdpr_tilebuffer1, #%%3120
               splitw vdpr_tilebuffer1
-              getword vdpr_tilebuffer2, vdpr_tiledata, #0    ' second group
-              movbyts vdpr_tilebuffer2, #%%3120
-              mergew vdpr_tilebuffer2
-              movbyts vdpr_tilebuffer2, #%%3120
-              splitw vdpr_tilebuffer2
+              mov vdpr_tilebuffer2,vdpr_tilebuffer1
+              shr vdpr_tilebuffer1,#4
+              and vdpr_tilebuffer1,vdpr_lowernibbles
+              and vdpr_tilebuffer2,vdpr_lowernibbles
 
               ' add attributes to  non-transparent pixels
               test vdpr_tilebuffer1,vdpr_pixnibtest+0 wz

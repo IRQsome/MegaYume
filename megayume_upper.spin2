@@ -937,8 +937,9 @@ if check_extension(num,"S"+"M"<<8+"D"<<16)
   return true
 return false
 
-PRI check_extension(num,ext) : r
-return long[MKRAM_BASE+12*num+9]&$FFFFFF == ext
+PRI check_extension(num,ext) : r | tmp
+tmp := long[MKRAM_BASE+12*num+9]&$FFFFFF 
+return tmp==ext || tmp==(ext|$202020)
 
 PRI filegetname(dst,num) | pt
 pt := MKRAM_BASE+12*num+1
