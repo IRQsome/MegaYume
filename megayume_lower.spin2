@@ -3827,7 +3827,6 @@ vdpr_sprVsize           res 1
 vdpr_sprHsize           res 1
 vdpr_sprHpos            res 1
 
-vdpr_tiledata           res 1
 vdpr_tilebuffer1        res 1
 vdpr_tilebuffer2        res 1
 
@@ -4085,10 +4084,17 @@ vdpr_doSpriteDraw
               shr vdpr_tmp1, #13 ' Just pal+priority
 
               testb vdpr_tile, #11 wc ' mirror bit
-    if_nc     splitb vdpr_tilebuffer1 ' reverse nibbles in tile
+              splitb vdpr_tilebuffer1 ' reverse nibbles in tile
     if_nc     rev vdpr_tilebuffer1
     if_nc     movbyts vdpr_tilebuffer1, #%%0123
-    if_nc     mergeb vdpr_tilebuffer1
+              not vdpr_tmp2,vdpr_tilebuffer1
+              mergeb vdpr_tilebuffer1
+              
+              ' generate transparency mask
+              getword vdpr_tmp3,vdpr_tmp2,#1
+              and vdpr_tmp2,vdpr_tmp3
+              getbyte vdpr_tmp3,vdpr_tmp2,#1
+              and vdpr_tmp2,vdpr_tmp3
 
               ' bit magic (space out nybbles)
               movbyts vdpr_tilebuffer1, #%%3120
@@ -4101,23 +4107,15 @@ vdpr_doSpriteDraw
               and vdpr_tilebuffer2,vdpr_lowernibbles
 
               ' add attributes to  non-transparent pixels
-              test vdpr_tilebuffer1,vdpr_pixnibtest+0 wz
-        if_nz setnib vdpr_tilebuffer1,vdpr_tmp1,#1
-              test vdpr_tilebuffer1,vdpr_pixnibtest+1 wz
-        if_nz setnib vdpr_tilebuffer1,vdpr_tmp1,#3
-              test vdpr_tilebuffer1,vdpr_pixnibtest+2 wz
-        if_nz setnib vdpr_tilebuffer1,vdpr_tmp1,#5
-              test vdpr_tilebuffer1,vdpr_pixnibtest+3 wz
-        if_nz setnib vdpr_tilebuffer1,vdpr_tmp1,#7
-
-              test vdpr_tilebuffer2,vdpr_pixnibtest+0 wz
-        if_nz setnib vdpr_tilebuffer2,vdpr_tmp1,#1
-              test vdpr_tilebuffer2,vdpr_pixnibtest+1 wz
-        if_nz setnib vdpr_tilebuffer2,vdpr_tmp1,#3
-              test vdpr_tilebuffer2,vdpr_pixnibtest+2 wz
-        if_nz setnib vdpr_tilebuffer2,vdpr_tmp1,#5
-              test vdpr_tilebuffer2,vdpr_pixnibtest+3 wz
-        if_nz setnib vdpr_tilebuffer2,vdpr_tmp1,#7
+              skip vdpr_tmp2
+              setnib vdpr_tilebuffer2,vdpr_tmp1,#1
+              setnib vdpr_tilebuffer2,vdpr_tmp1,#3
+              setnib vdpr_tilebuffer2,vdpr_tmp1,#5
+              setnib vdpr_tilebuffer2,vdpr_tmp1,#7
+              setnib vdpr_tilebuffer1,vdpr_tmp1,#1
+              setnib vdpr_tilebuffer1,vdpr_tmp1,#3
+              setnib vdpr_tilebuffer1,vdpr_tmp1,#5
+              setnib vdpr_tilebuffer1,vdpr_tmp1,#7
 
               ' Figure out where to draw
               mov vdpr_tmp1,ptra
