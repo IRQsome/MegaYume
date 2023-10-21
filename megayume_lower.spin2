@@ -3457,7 +3457,6 @@ vdpr_linelp
               lockrel #HINT_LOCK
 
               tjs vdpr_curline,#vdpr_prepareFrame
-              tjnz vdpr_forceSPRreload,vdpr_doSPRreload_ptr
 
 vdpr_doRender
               mov vdpr_renderbuffer_curline,vdpr_renderbuffer
@@ -3510,7 +3509,7 @@ vdpr_doRender
               testb vdpr_flags,#VDPFLAG_BLANK wc
         if_c  setq #(RENDERBUFFER_SIZE - 4*2)/4 - 1
         if_c  wrlong #0,ptra++
-        if_c  jmp #vdpr_doSPRreload ' force sprite table reload on blank lines. Makes Sonic2 multiplayer work.
+        if_c  jmp #vdpr_linelp
 
               add ptra,#8 ' skip over scratch area
 
@@ -3567,6 +3566,10 @@ vdpr_doRender
 
               ' Oh no, sprite time?
               '---------------------
+
+              ' update sprite cache
+              setq #80-1
+              rdlong vdpr_sprcache,##@vdp_sprcache
 
               ' Scan for sprites we want and put them in a buffer
               ' This is neccessary, yes
@@ -3683,10 +3686,7 @@ vdpr_prepareFrame
               ' Reset H-int counter
               rdbyte vdpr_hint_ctr,#vdp_hint_interval_b
 
-              jmp vdpr_doSPRreload_ptr
-              ' always reload sprites ( DROP THROUGH!)
-
-vdpr_doSPRreload_ptr long vdpr_doSPRreload ' lol
+              jmp #vdpr_linelp
 
 vdpr_renderPlane
               wrfast vdpr_con_bit31,ptra
@@ -3792,7 +3792,7 @@ vdpr_vsram_buffer       long 0[20] ' VSRAM buffer
 
 
 '' VDP registers in order as loaded from RAM
-vdpr_forceSPRreload     res 1 ' Fake register to force VDP sprite cache reload
+vdpr_forceSPRreload     res 1 ' Fake register that used to do a thing but now doesn't
 vdpr_flags              res 1
 vdpr_planeAbase         res 1
 vdpr_planeBbase         res 1
@@ -3849,17 +3849,6 @@ vdpr_tilebuffer2        res 1
 
 
 vdpr_sprcache           res 80
-vdpr_sprcache_end
-{
-vdpr_sprc_vpos          res 80 ' sprite VPOS cache (longs)
-vdpr_sprc_vpos_end
-vdpr_sprc_vsize         res 80/4 ' sprite VSIZE cache (bytes)
-vdpr_sprc_vsize_end
-vdpr_sprc_hsize         res 80/4 ' sprite HSIZE cache (bytes)
-vdpr_sprc_hsize_end
-vdpr_sprc_id            res 80/4 ' sprite ID cache (bytes)
-vdpr_sprc_id_end
-}
 
 
 vdpr_lspr_long2         res 20
@@ -3871,86 +3860,6 @@ vdpr_lspr_vdata_end
                         fit 496
 org $200
 vdpr_lutcode
-
-vdpr_doSPRreload
-              mov vdpr_forceSPRreload,#0
-              wrlong #0,vdpr_registerptr
-
-              mov ptra,vdpr_vramptr
-              add ptra,vdpr_spritebase
-              mov vdpr_sprScanIdx,#0
-              rep @.sprc_load_lp,#80
-              rdlong vdpr_tmp1, ptra[2]++
-              and vdpr_tmp1,##$0F7F_03FF
-              altd vdpr_sprScanIdx,#vdpr_sprcache
-              mov 0-0,vdpr_tmp1
-              add vdpr_sprScanIdx,#1
-.sprc_load_lp
-
-              
-
-{
-              mov vdpr_tmp4,#0 ' link ID
-              mov vdpr_tmp3,vdpr_screenwidth
-              shl vdpr_tmp3,#1 ' Sprite list limit
-              testb vdpr_flags,#VDPFLAG_H40 wc
-        if_c  mov vdpr_sprScanIdx,#0 ' cache ID (H40)
-        if_nc mov vdpr_sprScanIdx,#16 ' cache ID (H32)
-
-.sprcachelp
-              mov ptra,vdpr_tmp4
-              shl ptra,#3 ' entries are 8 byte each
-              add ptra,vdpr_spritebase
-              add ptra,vdpr_vramptr
-
-              ' We only cache the first 2 words (like HW)
-              rdlong vdpr_tmp1,ptra
-
-              mov vdpr_tmp2,vdpr_tmp1
-              zerox vdpr_tmp2 ,vdpr_lace8or9 ' get YPOS (mask with $3FF)
-              altr vdpr_sprScanIdx,#vdpr_sprc_vpos
-              subs vdpr_tmp2,vdpr_lace128or256 ' Bring into screen space and store
-
-              altsb vdpr_sprScanIdx,#vdpr_sprc_id
-              setbyte vdpr_tmp4 ' Store this sprite's ID
-
-              getbyte vdpr_tmp4,vdpr_tmp1,#2 ' Get Link
-              and vdpr_tmp4,#$7F
-              cmp vdpr_tmp4,vdpr_tmp3 wcz
-        if_ae mov vdpr_tmp4,#0 ' Out of bounds sprite ID is same as zero
-
-              ' Handle sizes
-              getnib vdpr_tmp2,vdpr_tmp1,#6
-              and vdpr_tmp2,#3
-              add vdpr_tmp2,#1
-              shl vdpr_tmp2,vdpr_lace3or4 ' store in pixels to help scan code later
-              altsb vdpr_sprScanIdx,#vdpr_sprc_vsize
-              setbyte vdpr_tmp2
-
-              getnib vdpr_tmp2,vdpr_tmp1,#6
-              shr vdpr_tmp2,#2
-              add vdpr_tmp2,#1
-              altsb vdpr_sprScanIdx,#vdpr_sprc_hsize
-              setbyte vdpr_tmp2
-
-
-              incmod vdpr_sprScanIdx,#80-1 wc ' Inc cache ID
-        if_nc tjnz vdpr_tmp4,#.sprcachelp ' Loop if space left and not end of list
-
-        if_c  jmp #vdpr_linelp ' All sprite slots filled!
-
-              ' If not, fill remaining slots with Y=0
-.sprunusedlp
-              altd vdpr_sprScanIdx,#vdpr_sprc_vpos
-              mov 0-0,#0
-              altsb vdpr_sprScanIdx,#vdpr_sprc_vsize
-              setbyte #0
-              incmod vdpr_sprScanIdx,#80-1 wc ' Inc cache ID
-        if_nc jmp #.sprunusedlp
-}
-              jmp #vdpr_linelp
-
-
 
 
 vdpr_renderWindow
@@ -4934,20 +4843,24 @@ vdpio_write16
               call #mk_readrom
               add mk_memtmp1,#DMA_BLOCK_SIZE
 .romdma_loop
+              djf mk_memtmp2,#.romdma_ret
+              djf mk_memtmp3,#.romdma_reload
+.romdma_loop_continue
               rdword mk_memvalue,ptrb++
               movbyts mk_memvalue,#%%2301 ' Swap here. We have another conditional swap in .wr_dataport, but oh well.
               rdlong mk_memtmp0,#vdp_io_address_w
-              call #.wr_dataport_internal
-              djz mk_memtmp2,#.romdma_ret
-              djnz mk_memtmp3,#.romdma_loop
+              loc pa,#.romdma_loop
+              push pa
+              jmp #.wr_dataport_internal
+.romdma_reload
               ' reload src
               mov pa,mk_memtmp1
               mov mk_romio_length,#DMA_BLOCK_SIZE
               call #mk_readrom
               add mk_memtmp1,#DMA_BLOCK_SIZE
-              mov mk_memtmp3,#DMA_BLOCK_SIZE*2 - 0
+              mov mk_memtmp3,#DMA_BLOCK_SIZE*2 - 1 ' - 1 because of how we jump back into the loop
               loc ptrb,#mk_romio_area
-              jmp #.romdma_loop
+              jmp #.romdma_loop_continue
 .romdma_ret
               ret wcz
 
@@ -4955,13 +4868,16 @@ vdpio_write16
               ' RAM sourced DMA is easier
               shl mk_memtmp1,#1
 .ramdma_loop
+              djf mk_memtmp2,#.ramdma_ret
               setword mk_memtmp1,#main_ram>>16,#1
               rdword mk_memvalue,mk_memtmp1
               add mk_memtmp1,#2
               movbyts mk_memvalue,#%%2301 ' Swap here. We have another conditional swap in .wr_dataport, but oh well.
               rdlong mk_memtmp0,#vdp_io_address_w
-              call #.wr_dataport_internal
-              djnz mk_memtmp2,#.ramdma_loop
+              loc pa,#.ramdma_loop
+              push pa
+              jmp #.wr_dataport_internal
+.ramdma_ret
               ret wcz
 
 
@@ -5034,8 +4950,8 @@ vdpio_write16
               bitl mk_memtmp0,#0 wcz 'VDP adresses are word-granular (bit0 endian swaps)
         if_nc skipf #%100 ' skip over endian swap if even address
               ' do stuff
-              testb mk_memtmp0,#24 wz ' CRAM flag?
-              testb mk_memtmp0,#25 wc ' VSRAM flag?
+              testb mk_memtmp0,#24 wz ' VSRAM flag?
+              testb mk_memtmp0,#25 wc ' CRAM flag?
         if_00 movbyts mk_memvalue,#%%2301 ' Byteswap can only happen in VRAM
         if_00 setword mk_memtmp0,#vdp_ram>>16,#1
     if_not_00 and  mk_memtmp0,#63<<1
@@ -5043,7 +4959,26 @@ vdpio_write16
         if_10 loc  pa,#\vdp_cram
     if_not_00 add  mk_memtmp0,pa
     if_not_11 wrword mk_memvalue,mk_memtmp0
-    if_not_10 ret wcz
+    if_not_00 jmp #.update_cram
+              ' Handle sprite cache
+              testb mk_memtmp0,#2 wz ' Only addresses with bit 2 clear are ever cached
+      if_nz   rdlong pa, #vdp_spritebase
+              getword mk_memtmp0,mk_memtmp0,#0
+              cmpsub mk_memtmp0, pa wc
+      if_c    cmp mk_memtmp0,##80*8 wc
+   if_nc_or_z ret wcz
+              loc pa,#\vdp_sprcache
+              shr mk_memtmp0,#2 wc
+              bitc mk_memtmp0,#0
+              shl mk_memtmp0,#1
+              add mk_memtmp0,pa
+      if_c    and mk_memvalue,##$0F7F ' discard unused bits for size/link
+      if_nc   zerox mk_memvalue,#9 ' discard unused bits for VPOS
+              wrword mk_memvalue,mk_memtmp0
+              ret wcz
+
+.update_cram
+    if_not_10 ret wcz ' Catch VSRAM writes here
               '' Update CRAM32
               sub mk_memtmp0,pa
               shl mk_memtmp0,#1
@@ -8284,6 +8219,9 @@ vdp_cram ' also VSRAM
 
 vdp_cram32
               long 0[64*3]
+
+vdp_sprcache  
+              long 0[80]
 
 renderbuffer_loc
               byte 0[RENDERBUFFER_SIZE*2]
