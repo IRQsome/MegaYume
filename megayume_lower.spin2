@@ -3570,46 +3570,60 @@ vdpr_doRender
 
               ' Scan for sprites we want and put them in a buffer
               ' This is neccessary, yes
-              neg vdpr_sprScanIdx,vdpr_screenwidth
-              shl vdpr_sprScanIdx,#1
-              sub vdpr_sprScanIdx,#1
-              neg vdpr_lsprEntryFirst,vdpr_screenwidth
-              sar vdpr_lsprEntryFirst,#1
-              altd vdpr_lsprEntryFirst,#vdpr_lspr_ids_end - 1
-              neg 0-0,#511
+              mov vdpr_sprScanMax,vdpr_screenwidth
+              shl vdpr_sprScanMax,#1
+              mov vdpr_sprScanLeft,vdpr_sprScanMax
+              mov vdpr_sprScanIdx,#0
+              neg vdpr_lsprEntry,vdpr_screenwidth
+              sar vdpr_lsprEntry,#1
+              mov vdpr_lsprEntryBase,vdpr_lsprEntry
 
-              mov vdpr_lsprEntry,vdpr_lsprEntryFirst
               mov vdpr_sprTilesLeft,vdpr_screenwidth
               sub vdpr_sprTilesLeft,#1
               mov vdpr_tmp4,#0 ' Used to keep track of wether we found a non-mask sprite
 
-.sprscanlp
-              ijz vdpr_sprScanIdx,#.scandone
-              alts vdpr_sprScanIdx,#vdpr_sprc_vpos_end
-              mov vdpr_sprline,0-0 ' get VPOS
-              altgb vdpr_sprScanIdx,#vdpr_sprc_vsize_end
-              getbyte vdpr_sprVsize
+              mov vdpr_effline_spr,vdpr_effline
+              add vdpr_effline_spr,vdpr_lace128or256
 
-              subr vdpr_sprline,vdpr_effline
+              jmp #.sprscanstart
+
+.sprscanlp
+              djz vdpr_sprScanLeft,#.scandone
+              and vdpr_sprScanNext,#$7F wz
+              cmp vdpr_sprScanNext,vdpr_sprScanMax wc
+   if_nc_or_z jmp #.scandone
+              mov vdpr_sprScanIdx,vdpr_sprScanNext
+.sprscanstart
+              
+
+              alts vdpr_sprScanIdx,#vdpr_sprcache
+              mov vdpr_sprline,0-0
+              getbyte vdpr_sprScanNext,vdpr_sprline,#2
+              getbyte vdpr_sprVsize, vdpr_sprline,#3
+              zerox vdpr_sprline,vdpr_lace8or9 ' get VPOS
+              mov vdpr_sprHsize,vdpr_sprVsize
+              and vdpr_sprVsize,#3
+              add vdpr_sprVsize,#1
+              shl vdpr_sprVsize,vdpr_lace3or4 ' get height
+
+              subr vdpr_sprline,vdpr_effline_spr
               'debug(sdec(vdpr_sprScanIdx,vdpr_sprline,vdpr_sprVsize))
               cmp vdpr_sprline,vdpr_sprVsize wc
         if_ae jmp #.sprscanlp
               'debug("Got it ",sdec(vdpr_lsprEntry))
               ' Got one in range!!
-              altd vdpr_lsprEntry,#vdpr_lspr_ids_end
-              mov 0-0,vdpr_sprScanIdx
-              altd vdpr_lsprEntry,#vdpr_lspr_vline_end
-              mov 0-0,vdpr_sprline
 
               ' Handle tile limit
-              altgb vdpr_sprScanIdx,#vdpr_sprc_hsize_end
-              getbyte vdpr_tmp2
-              sub vdpr_sprTilesLeft,vdpr_tmp2
+              shr vdpr_sprHsize,#2
+              add vdpr_sprHsize,#1
+              sub vdpr_sprTilesLeft,vdpr_sprHsize
 
-              altgb vdpr_sprScanIdx,#vdpr_sprc_id_end
-              getbyte vdpr_tmp2
+              setbyte vdpr_sprline,vdpr_sprVsize,#1
+              altr vdpr_lsprEntry,#vdpr_lspr_vdata_end
+              setbyte vdpr_sprline,vdpr_sprHsize,#2
 
               ' get rest of sprite data from VRAM
+              mov vdpr_tmp2,vdpr_sprScanIdx
               shl vdpr_tmp2,#3
               add vdpr_tmp2,vdpr_spritebase
               add vdpr_tmp2,vdpr_vramptr
@@ -3803,6 +3817,7 @@ vdpr_renderbuffer_curline res 1
 vdpr_hint_ctr           res 1
 
 vdpr_effline            res 1
+vdpr_effline_spr        res 1
 vdpr_tileline_mask      res 1
 vdpr_lace3or4           res 1
 vdpr_lace5or6           res 1
@@ -3818,9 +3833,11 @@ vdpr_current_hscroll    res 1 ' for current line
 vdpr_windowColumnsNow   res 1
 
 vdpr_sprScanIdx         res 1
-'vdpr_sprScanMax         res 1
+vdpr_sprScanMax         res 1
+vdpr_sprScanLeft        res 1
+vdpr_sprScanNext        res 1
 vdpr_lsprEntry          res 1
-vdpr_lsprEntryFirst     res 1
+vdpr_lsprEntryBase      res 1
 vdpr_sprTilesLeft       res 1
 vdpr_sprline            res 1
 vdpr_sprVsize           res 1
@@ -3831,6 +3848,9 @@ vdpr_tilebuffer1        res 1
 vdpr_tilebuffer2        res 1
 
 
+vdpr_sprcache           res 80
+vdpr_sprcache_end
+{
 vdpr_sprc_vpos          res 80 ' sprite VPOS cache (longs)
 vdpr_sprc_vpos_end
 vdpr_sprc_vsize         res 80/4 ' sprite VSIZE cache (bytes)
@@ -3839,16 +3859,13 @@ vdpr_sprc_hsize         res 80/4 ' sprite HSIZE cache (bytes)
 vdpr_sprc_hsize_end
 vdpr_sprc_id            res 80/4 ' sprite ID cache (bytes)
 vdpr_sprc_id_end
+}
 
 
-                        res 1 ' buffer because lol
-vdpr_lspr_ids           res 20 ' sprite IDs for this line
-vdpr_lspr_ids_end
 vdpr_lspr_long2         res 20
 vdpr_lspr_long2_end
-vdpr_lspr_vline         res 20
-vdpr_lspr_vline_end
-
+vdpr_lspr_vdata         res 20
+vdpr_lspr_vdata_end
 
 
                         fit 496
@@ -3859,6 +3876,20 @@ vdpr_doSPRreload
               mov vdpr_forceSPRreload,#0
               wrlong #0,vdpr_registerptr
 
+              mov ptra,vdpr_vramptr
+              add ptra,vdpr_spritebase
+              mov vdpr_sprScanIdx,#0
+              rep @.sprc_load_lp,#80
+              rdlong vdpr_tmp1, ptra[2]++
+              and vdpr_tmp1,##$0F7F_03FF
+              altd vdpr_sprScanIdx,#vdpr_sprcache
+              mov 0-0,vdpr_tmp1
+              add vdpr_sprScanIdx,#1
+.sprc_load_lp
+
+              
+
+{
               mov vdpr_tmp4,#0 ' link ID
               mov vdpr_tmp3,vdpr_screenwidth
               shl vdpr_tmp3,#1 ' Sprite list limit
@@ -3916,7 +3947,7 @@ vdpr_doSPRreload
               setbyte #0
               incmod vdpr_sprScanIdx,#80-1 wc ' Inc cache ID
         if_nc jmp #.sprunusedlp
-
+}
               jmp #vdpr_linelp
 
 
@@ -4016,25 +4047,23 @@ vdpr_doSpriteDraw
               ' Actually draw the sprites
 .sprdrawlp
               sub vdpr_lsprEntry,#1
-              alts vdpr_lsprEntry,#vdpr_lspr_ids_end
-              mov vdpr_sprScanIdx,0-0
-              add vdpr_sprScanIdx,#80
-              tjs vdpr_sprScanIdx,#vdpr_spritesDone
+              cmp vdpr_lsprEntry,vdpr_lsprEntryBase wc
+      if_b    jmp #vdpr_spritesDone
 
               'wrlong ##$FF_FF_FF_FF,ptra
 
               ' get rest of sprite data
-              altgb vdpr_sprScanIdx,#vdpr_sprc_vsize
-              getbyte vdpr_sprVsize
+              alts vdpr_lsprEntry,#vdpr_lspr_vdata_end
+              mov vdpr_sprline,0-0
+              getbyte vdpr_sprVsize,vdpr_sprline,#1
+              getbyte vdpr_sprHsize,vdpr_sprline,#2
+              getbyte vdpr_sprline,vdpr_sprline,#0
+
               alts vdpr_lsprEntry,#vdpr_lspr_long2_end
-              getword vdpr_tile,0-0,#0
-              alts vdpr_lsprEntry,#vdpr_lspr_long2_end
-              getword vdpr_sprHpos,0-0,#1
+              mov vdpr_tile,0-0
+              getword vdpr_sprHpos,vdpr_tile,#1
               zerox vdpr_sprHpos,#8 ' mask to $1FF
               subs vdpr_sprHpos,#128 ' bring into screen space
-
-              altgb vdpr_sprScanIdx,#vdpr_sprc_hsize
-              getbyte vdpr_sprHsize  ' get H size (used as loop counter)
 
               ' We draw from right to left, for some reason
               mov vdpr_tmp1,vdpr_sprHsize
@@ -4049,8 +4078,7 @@ vdpr_doSpriteDraw
               testb vdpr_tile,#12 wc ' flip bit
         if_c  add vdpr_tmp4,vdpr_sprVsize
         if_c  sub vdpr_tmp4,#1
-              alts vdpr_lsprEntry,#vdpr_lspr_vline_end
-              sumc vdpr_tmp4,0-0
+              sumc vdpr_tmp4,vdpr_sprline
               shl vdpr_tmp4,#2
               add vdpr_tmp4,vdpr_vramptr ' Tile data address!
 
@@ -4080,7 +4108,7 @@ vdpr_doSpriteDraw
               ' rogloh's optimized variant...
 
               ' Prepare attributes
-              mov vdpr_tmp1, vdpr_tile
+              getword vdpr_tmp1, vdpr_tile,#0
               shr vdpr_tmp1, #13 ' Just pal+priority
 
               testb vdpr_tile, #11 wc ' mirror bit
