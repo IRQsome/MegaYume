@@ -3732,8 +3732,7 @@ vdpr_vscroll_getter
 
               ' Prepare attributes
               mov vdpr_tmp1, vdpr_tile
-              shr vdpr_tmp1, #13 ' Just pal+priority
-              shl vdpr_tmp1, #4
+              shr vdpr_tmp1, #13-4 ' Just pal+priority
               movbyts vdpr_tmp1, #%%0000
 
               testb vdpr_tile, #11 wc ' mirror bit
