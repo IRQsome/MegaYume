@@ -3769,8 +3769,6 @@ vdpr_vscroll_getter_planeA if_nc getword vdpr_current_vscroll,vdpr_vsram_buffer,
 vdpr_vscroll_getter_planeB if_nc getword vdpr_current_vscroll,vdpr_vsram_buffer,#1
 vdpr_vscroll_getter_window if_always and vdpr_current_vscroll,#0
 
-vdpr_pixnibtest       long 15<<0,15<<8,15<<16,15<<24
-
 vdpr_maskingtest      long $01FF_0000
 
 vdpr_uppernibbles     long $F0F0F0F0
