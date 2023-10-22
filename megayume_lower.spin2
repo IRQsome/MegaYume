@@ -3583,10 +3583,15 @@ vdpr_doRender
 
               mov vdpr_sprTilesLeft,vdpr_screenwidth
               sub vdpr_sprTilesLeft,#1
-              mov vdpr_tmp4,#0 ' Used to keep track of wether we found a non-mask sprite
+              sar vdpr_sprTilesLeftPrev,#31 ' Used to keep track of wether we found a non-mask sprite
+              neg vdpr_tmp4,#1 ' cleared when mask found
 
               mov vdpr_effline_spr,vdpr_effline
               add vdpr_effline_spr,vdpr_lace128or256
+
+              mov vdpr_tmp1,vdpr_vramptr
+              add vdpr_tmp1,vdpr_spritebase
+              add vdpr_tmp1,#4
 
               jmp #.sprscanstart
 
@@ -3626,25 +3631,21 @@ vdpr_doRender
               setbyte vdpr_sprline,vdpr_sprHsize,#2
 
               ' get rest of sprite data from VRAM
-              mov vdpr_tmp2,vdpr_sprScanIdx
-              shl vdpr_tmp2,#3
-              add vdpr_tmp2,vdpr_spritebase
-              add vdpr_tmp2,vdpr_vramptr
-              add vdpr_tmp2,#4
-              rdlong vdpr_tmp2,vdpr_tmp2
-              altd vdpr_lsprEntry,#vdpr_lspr_long2_end
-              mov 0-0,vdpr_tmp2
+              shl vdpr_sprScanIdx,#3
+              add vdpr_sprScanIdx,vdpr_tmp1
+              rdlong vdpr_tmp2,vdpr_sprScanIdx
 
-              ' Handle masking nonsense (if X=0 and not first sprite)
+              ' Handle masking nonsense (if X=0 and not first sprite OR X=0 and previous line had tile overflow)
               test vdpr_tmp2,vdpr_maskingtest wz
               modc _nz wc
-              subsx vdpr_tmp4,#0 wc ' C set if non-mask sprite found
+              subsx vdpr_sprTilesLeftPrev,#0 wc ' C set if non-mask sprite found before
+  if_z_and_c  mov vdpr_tmp4,#0
+              altr vdpr_lsprEntry,#vdpr_lspr_long2_end
+              and vdpr_tmp2,vdpr_tmp4
 
-  if_nz_or_nc ijnz vdpr_lsprEntry,#.sprscanlp
-.scandone_uhhh
-  if_z_and_c  add vdpr_lsprEntry,#1
+              ijnz vdpr_lsprEntry,#.sprscanlp
 .scandone
-
+              mov vdpr_sprTilesLeftPrev,vdpr_sprTilesLeft
               jmp #vdpr_doSpriteDraw
 
 
@@ -3685,6 +3686,8 @@ vdpr_prepareFrame
 
               ' Reset H-int counter
               rdbyte vdpr_hint_ctr,#vdp_hint_interval_b
+
+              mov vdpr_sprTilesLeftPrev,#0
 
               jmp #vdpr_linelp
 
@@ -3839,6 +3842,8 @@ vdpr_sprScanNext        res 1
 vdpr_lsprEntry          res 1
 vdpr_lsprEntryBase      res 1
 vdpr_sprTilesLeft       res 1
+vdpr_sprTilesLeftPrev   res 1
+
 vdpr_sprline            res 1
 vdpr_sprVsize           res 1
 vdpr_sprHsize           res 1
