@@ -1,5 +1,5 @@
 {{
-    "USBNEW" modular USB input driver - v1.1.2
+    "USBNEW" modular USB input driver - v1.1.4
 
     By Ada Gottensträter ("Wuerfel_21")
 
@@ -26,8 +26,10 @@ CON
   KEYQUEUE_SIZE = 0
 
   NUMLOCK_DEFAULT_STATE = true
+  RPI_KEYBOARD_NUMLOCK_HACK = true
 
   HAVE_MOUSE = false
+  MOUSE_FULL_PROTOCOL = false ' Experimental: Use full HID report protocol for mice
 
   HAVE_HIDPAD = false ' Set to false to disable HidPad inteface
   HIDPAD_REPORT_SIZE = 8*4 ' do not change!
@@ -195,7 +197,7 @@ PUB mouse_move(x,y)
 
 '' Get mouse buttons state
 PUB mouse_buttons() : r
-  return mouse_bstate&7
+  return mouse_bstate
 
 '' Set limits for mouse movement
 PUB mouse_set_limits(xlim,ylim)
@@ -2104,6 +2106,12 @@ hset_config
                 mov     hctwait, _2ms_
                 call    #poll_waitx
                 mov     kb_led_states, #NUMLOCK_DEFAULT_STATE ? LED_NUMLKF : 0
+        if NUMLOCK_DEFAULT_STATE && RPI_KEYBOARD_NUMLOCK_HACK
+                alts    hdev_port,#hdev_id
+                mov     htmp,0-0
+                cmp     htmp, ##$04D9_0006      wz      ' Holtek Pi keyboard vendor/product
+        if_e    andn    kb_led_states, #LED_NUMLKF
+        end
                 mov     hkbd_ledstates, kb_led_states
                 loc     pa, #hkbd_led_rep
                 wrbyte  hkbd_ledstates,pa
@@ -2153,7 +2161,7 @@ if HAVE_MOUSE
 
                 getbyte htmp, ms_intf_num, #0
                 loc     ptra, #set_protocol
-                wrword  #BOOT_PROTOCOL, ptra[wValue]
+                wrword  #MOUSE_FULL_PROTOCOL ? REPORT_PROTOCOL : BOOT_PROTOCOL, ptra[wValue]
                 wrword  htmp, ptra[wIndex]
                 mov     pb, #0                          ' SetProtocol() has no data stage
                 call    #control_write
@@ -2652,10 +2660,16 @@ hget_mouse_in_report
         if_z    setbyte kbm_next_datax, #PID_DATA1, #1  ' |
         if_nz   setbyte kbm_next_datax, #PID_DATA0, #1  ' |
 
+        'debug(uhex_byte_array(urx_buff_p,hpar3))
+
+        if MOUSE_FULL_PROTOCOL
+                call #hid_decode
+        else
                 mov     ptra, urx_buff_p
                 cmp     hpar3, #5               wcz     ' Hack: Combo PS/2-USB adapters adds report-id
         if_ae   add     ptra, #1                        ' | skip
         if_ae   sub     hpar3, #1
+        end
 
                 loc     pa, #mouse_limits
                 loc     ptrb, #mouse_xacc
@@ -2667,35 +2681,55 @@ hget_mouse_in_report
                 setq    #3-1
                 rdlong  htmp1,pa
 
+        if MOUSE_FULL_PROTOCOL
+                wrbyte  hidr_buttons, ptrb[12]
+        else
                 rdbyte  htmp, ptra++                     ' Button flags
                 wrbyte  htmp, ptrb[12]                    ' write verbatim into extra byte
+                { ' Currently not used
                 testb   htmp,#0                 wc       ' left button flag
         if_c    wrbyte  #1,ptrb[13]
-                testb   htmp,#1                 wc       ' left button flag
+                testb   htmp,#1                 wc       ' right button flag
         if_c    wrbyte  #1,ptrb[14]
-                testb   htmp,#2                 wc       ' left button flag
+                testb   htmp,#2                 wc       ' middle button flag
         if_c    wrbyte  #1,ptrb[15]
-              
+                '}
+        end
 
+        if MOUSE_FULL_PROTOCOL
+                getword htmp, hidr_axis+0, #0
+                signx   htmp, #15
+        else
                 rdbyte  htmp, ptra++                     ' X direction and velocity is 8-bit signed
                 signx   htmp, #7
+        end
                 add     hr1,htmp
                 cmp     htmp1,#0 wz
         if_ne   fles    hr1,htmp1
         if_ne   fges    hr1,#0
 
+        if MOUSE_FULL_PROTOCOL
+                getword htmp, hidr_axis+0, #1
+                signx   htmp, #15
+        else
                 rdbyte  htmp, ptra++                     ' Y direction and velocity is 8-bit signed
                 signx   htmp, #7
+        end
                 add     hr2,htmp
                 cmp     htmp2,#0 wz
         if_ne   fles    hr2,htmp2
         if_ne   fges    hr2,#0
                 
-
+        if MOUSE_FULL_PROTOCOL
+                getword htmp, hidr_axis+3, #1           ' Mouse wheel is actually on the "wheel axis"
+                signx   htmp, #15
+                add     hr3, htmp
+        else    
                 cmp     hpar3, #4               wz      ' Very few mice send +/- scroll wheel data in boot protocol
         if_z    rdbyte  htmp, ptra
         if_z    signx   htmp, #7                        ' If it's there, use it
         if_z    add     hr3,htmp
+        end
 
                 rdbyte  htmp,ptrb[16]           wz      ' Is lock flag set?
         if_nz   ret                                     ' If so, don't write results
@@ -2772,7 +2806,8 @@ hget_gp_in_report
                 push pa
 
                 ' FALL THROUGH !!!!
-
+end
+if _HAVE_GAMEPAD || MOUSE_FULL_PROTOCOL
 '------------------------------------------------------------------------------
 ' Decode controller report
 '------------------------------------------------------------------------------
@@ -2785,10 +2820,12 @@ hid_decode
 
                 altgb   hdev_port, #hdev_type
                 getbyte hidr_type
+        if _HAVE_GAMEPAD
                 cmp     hidr_type, #XINPUT_READY        wz
         if_z    jmp     #hpad_xinput
                 cmp     hidr_type, #PS3_READY           wz
         if_z    jmp     #hpad_ps3
+        end
                 cmp     hidr_type, #KBM_READY           wz
         if_z    mov     hidr_type,#M_READY
                 cmp     hidr_type, #M_READY             wz
@@ -2874,7 +2911,7 @@ hpad_hid
                 add     hidr_offset, htmp
                 jmp     #.next
 .axes
-                'debug(".axes ", udec(hidr_offset,hidr_size,hidr_count))
+                'debug(".axes ", udec(hidr_offset,hidr_size,hidr_count),uhex_long(hidr_flags))
                 getnib  hr0, hidr_flags, #2
                 mov     hr1, hidr_count
 .l1
@@ -2920,6 +2957,7 @@ hpad_hid
                 cmp     hidr_id, #0     wz
         if_nz   ret     wcz
                 rdbyte  htmp, ptrb++
+                'debug(".report_id",udec(htmp,hpar2))
                 cmp     htmp, hpar2     wz
         if_z    mov     hidr_id, htmp
         if_nz   neg     hidr_state,#1
@@ -2950,6 +2988,7 @@ hpad_hid
 .usage_axis
                 cmps    hidr_state, #1          wc
         if_b    jmp     #.next
+                fle     hpar2, #HID_USAGE_DIAL   ' Let's just say wheel and dial are the same to keep sane
                 altsn   hidr_usage_idx, #hidr_usage
                 setnib  hpar2
 
@@ -2967,8 +3006,86 @@ hpad_hid
         if_nc   setq    #(hidr_end-hidr_state)-1
         if_nc   rdlong  hidr_state, pb
                 jmp     #.next
-        
 
+'------------------------------------------------------------------------------
+' Read bits from report data buffer
+'------------------------------------------------------------------------------
+' On entry:
+'   PTRB - report buffer
+'   hpar1 - start bit
+'   hpar2 - number of bits
+' On exit:
+'   retval - bits
+'------------------------------------------------------------------------------
+hpad_getbits
+                mov     htmp, hpar1
+                shr     htmp, #3        ' byte offset
+                add     htmp, ptrb
+                rdlong  retval, htmp
+
+                mov     htmp1, hpar1
+                and     htmp1, #$07     ' shift
+                shr     retval, htmp1
+
+                cmp     hpar2, #24      wcz
+        if_a    jmp     #.l1
+
+                decod   hpar2
+                sub     hpar2, #1
+                and     retval, hpar2
+                ret
+.l1
+                and     retval, ##$00_FFFFFF
+                add     htmp, #3
+                rdlong  htmp2, htmp
+                sub     hpar2, #24
+                decod   hpar2
+                sub     hpar2, #1
+                shr     htmp2, htmp1
+                and     htmp2, hpar2
+                shl     htmp2, #24
+                or      retval, htmp2
+                ret
+
+'------------------------------------------------------------------------------
+' Normalize value to signed word (-32768 / 32767)
+'------------------------------------------------------------------------------
+' On entry:
+'   retval - value to normalize
+'   hidr_lminmax - min (word 1) max (word 0) value range
+'   - or -
+'   hidr_pminmax - min (word 1) max (word 0) value range
+'   hidr_size - value bits length
+' On exit:
+'   retval - normalized value
+'------------------------------------------------------------------------------
+hpad_normalize
+                mov     htmp, hidr_lminmax  wz
+        if_z    mov     htmp, hidr_pminmax  wz
+        if_z    ret
+                getword htmp1, htmp, #1     ' htmp1 = min
+                getword htmp, htmp, #0      ' htmp = max
+                signx   htmp1, #15      wc
+        if_c    alts    hidr_size, #511
+        if_c    signx   retval, #0-0
+                ' slightly crappy hack: if in mouse mode, don't normalize
+                cmp     hidr_type, #M_READY wz
+        if_z    ret
+                subs    htmp, htmp1         ' htmp = (max - min)
+                subs    retval, htmp1       ' retval = (retval - min)
+                shl     retval, #16         ' retval = (retval - min) << 16
+                subs    retval, #1          ' retval = ((retval - min) << 16) - 1
+                abs     htmp            wc
+                testb   retval, #31     wz
+                abs     retval
+                qdiv    retval, htmp
+                getqx   retval
+    if_c_ne_z   neg     retval              ' retval = (((retval - min) << 16) - 1) / (max - min)
+                adds    retval, ##$8000 signx 15
+                ret
+end
+
+if _HAVE_GAMEPAD
 '------------------------------------------------------------------------------
 ' Handle XInput controller
 ' On entry:
@@ -3042,9 +3159,7 @@ hpad_xinput
                 mov     htmp2, ##$FFFF_F312
                 altgn   htmp, #htmp1
                 getnib  htmp
-                setbyte hidr_hats, htmp, #0
-
-                jmp     #hpad_translate
+        _ret_   setbyte hidr_hats, htmp, #0
 
 '------------------------------------------------------------------------------
 ' Handle PS3 controller
@@ -3119,83 +3234,8 @@ hpad_ps3
                 mov     htmp2, ##$FFF5_FF76
                 altgn   htmp, #htmp1
                 getnib  htmp
-                setbyte hidr_hats, htmp, #0
+        _ret_   setbyte hidr_hats, htmp, #0
 
-                jmp     #hpad_translate
-
-'------------------------------------------------------------------------------
-' Read bits from report data buffer
-'------------------------------------------------------------------------------
-' On entry:
-'   PTRB - report buffer
-'   hpar1 - start bit
-'   hpar2 - number of bits
-' On exit:
-'   retval - bits
-'------------------------------------------------------------------------------
-hpad_getbits
-                mov     htmp, hpar1
-                shr     htmp, #3        ' byte offset
-                add     htmp, ptrb
-                rdlong  retval, htmp
-
-                mov     htmp1, hpar1
-                and     htmp1, #$07     ' shift
-                shr     retval, htmp1
-
-                cmp     hpar2, #24      wcz
-        if_a    jmp     #.l1
-
-                decod   hpar2
-                sub     hpar2, #1
-                and     retval, hpar2
-                ret
-.l1
-                and     retval, ##$00_FFFFFF
-                add     htmp, #3
-                rdlong  htmp2, htmp
-                sub     hpar2, #24
-                decod   hpar2
-                sub     hpar2, #1
-                shr     htmp2, htmp1
-                and     htmp2, hpar2
-                shl     htmp2, #24
-                or      retval, htmp2
-                ret
-
-'------------------------------------------------------------------------------
-' Normalize value to signed word (-32768 / 32767)
-'------------------------------------------------------------------------------
-' On entry:
-'   retval - value to normalize
-'   hidr_lminmax - min (word 1) max (word 0) value range
-'   - or -
-'   hidr_pminmax - min (word 1) max (word 0) value range
-'   hidr_size - value bits length
-' On exit:
-'   retval - normalized value
-'------------------------------------------------------------------------------
-hpad_normalize
-                mov     htmp, hidr_lminmax  wz
-        if_z    mov     htmp, hidr_pminmax  wz
-        if_z    ret
-                getword htmp1, htmp, #1     ' htmp1 = min
-                getword htmp, htmp, #0      ' htmp = max
-                signx   htmp1, #15      wc
-        if_c    alts    hidr_size, #511
-        if_c    signx   retval, #0-0
-                subs    htmp, htmp1         ' htmp = (max - min)
-                subs    retval, htmp1       ' retval = (retval - min)
-                shl     retval, #16         ' retval = (retval - min) << 16
-                subs    retval, #1          ' retval = ((retval - min) << 16) - 1
-                abs     htmp            wc
-                testb   retval, #31     wz
-                abs     retval
-                qdiv    retval, htmp
-                getqx   retval
-    if_c_ne_z   neg     retval              ' retval = (((retval - min) << 16) - 1) / (max - min)
-                adds    retval, ##$8000 signx 15
-                ret
 
 '------------------------------------------------------------------------------
 ' Perform controller actions
@@ -4328,6 +4368,7 @@ CON ' USB Descriptor Definitions
     HID_USAGE_RY        = $34
     HID_USAGE_RZ        = $35
     HID_USAGE_SLIDER    = $36
+    HID_USAGE_DIAL      = $37
     HID_USAGE_WHEEL     = $38
     HID_USAGE_HATSWITCH = $39
 
