@@ -115,7 +115,7 @@ case mode
     wrpin((basepin+1) addpins 2,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
     pinl((basepin+1) addpins 2)
   MODE_HDMI:
-    wrpin(basepin addpins 7,P_DAC_124R_3V|P_BITDAC|($FE<<8))
+    wrpin(basepin addpins 7,P_DAC_124R_3V|P_BITDAC|($F7<<8))
     'wrpin(basepin addpins 7,P_LOW_1K5|P_HIGH_1K5)
   MODE_LCD6:
     waitms(1)
@@ -697,7 +697,7 @@ vislineH40_hdmi
               rflong pa
               andn pa,#$FF
               xcont hdmi_command,pa
-              ret
+              ret  wcz
 
 .lcd
               rep #4,#320
@@ -705,7 +705,7 @@ vislineH40_hdmi
               and pa,lcdmask
               shr pa,#8
               xcont lcd6_command,pa
-              ret
+              ret  wcz
 
 vislineH32_hdmi
               testb cmod_val,#30 wc ' LCD?
@@ -718,7 +718,7 @@ vislineH32_hdmi
               xcont hdmi_command,pa
               xcont pillar_command,#0
               xcont pillar_command,#0
-              ret
+              ret  wcz
 
 .lcd
               rep #1,#3
@@ -733,7 +733,7 @@ vislineH32_hdmi
               rep #1,#3
               xcont pillar_command,#0
 
-              ret  
+              ret  wcz
 
 
 
