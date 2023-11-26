@@ -552,7 +552,7 @@ long[tmp][0] := clkfreq
 #ifdef USE_HYPER
 long[tmp][1] := (HYPER_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
 long[tmp][2] := (HYPER_RESET < 32 && HYPER_RESET > 0) ? 1<<HYPER_RESET : 0
-long[tmp][3] := HYPER_RESET >= 32 ? 1<<HYPER_RESET : 0
+long[tmp][3] := HYPER_RESET >= 32 ? 1<<(HYPER_RESET-32) : 0
 #elseifdef USE_PSRAM_EITHER
 long[tmp][1] := (PSRAM_SYNC_CLOCK?0:1)<<exmem.UNREGCLK_BIT
 #ifdef USE_PSRAM_SLOW
@@ -1252,7 +1252,7 @@ case first := byte[ptr]
   other: return 1 ' silently consume unknown byte
 
 #ifdef INPUT_USE_PINS
-PRI pinput_cog() | p,data,outptr,tabptr,type
+PRI pinput_cog() | i,p,data,outptr,tabptr,type
 
 repeat i from 0 to 31
   if (p:=pin_table[i]) +< 64
