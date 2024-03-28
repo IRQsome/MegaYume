@@ -311,7 +311,7 @@ if usb.keystate(usb.KEY_Esc) or {usb.keystate(usb.KEY_Bkspace) or} pad.[4]
   keys |= MENUKEY_BACK
 
 
-PRI open_romfile(name) | tmp
+PRI open_romfile(name) : r | tmp
 
 tmp := __builtin_alloca(512)
 
