@@ -1,5 +1,5 @@
 {{
-    "USBNEW" modular USB input driver - v1.1.4
+    "USBNEW" modular USB input driver - v1.1.5
 
     By Ada Gottensträter ("Wuerfel_21")
 
@@ -1418,7 +1418,7 @@ host_reset
                 wypin   #OUT_IDLE, dm
 
                 ' Handle Port protection enable and startup delay
-                cmp     usb_enable_pin, #0      wc
+                cmps    usb_enable_pin, #0      wc
         if_ae   drvl    usb_enable_pin                 ' disable port
                 waitx   _21ms_                          ' Wait a while for everything to turn off
         if_ae   drvh    usb_enable_pin                  ' Enable the port
