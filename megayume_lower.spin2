@@ -816,7 +816,7 @@ mk_illegal
 mk_getop_ram
               mov mk_memtmp0,mk_virtualpc
               add mk_virtualpc,#2
-              setword mk_memtmp0,#1,#1 ' main_ram!
+              setword mk_memtmp0,#@main_ram>>16,#1
               rdword mk_opword,mk_memtmp0
         _ret_ movbyts mk_opword,#%%3201
 
@@ -4817,7 +4817,7 @@ vdpio_write16
 .do_dma
               rdlong mk_memtmp1,#vdp_dmasrc_l wc
               rdword mk_memtmp2,#vdp_dmalen_w wz
-        if_z  setword mk_memtmp2,#1,#1
+        if_z  setword mk_memtmp2,#1,#1        ' DMA Length = 0 means 64K words
         if_c  jmp #.asetup_fill
               wrbyte mk_memtmp0,#vdp_iomode_b ' Yes, after DMA, VDP should be in regular write mode - I think. Thing is really weird. Unless we're doing a fill.
               debug("Doing DMA of ",uhex_word_(mk_memtmp2)," words from ",uhex_long_(mk_memtmp1)," to ",uhex_word_array_(#@vdp_io_address_w,#1),uhex_long(mk_virtualpc))
@@ -4895,7 +4895,7 @@ vdpio_write16
               testb mk_memtmp1,#22 andc
         if_nc ret wcz  ' if fill mode or tranfer mode, ignore???
               rdword mk_memtmp2,#vdp_dmalen_w wz
-        if_z  setword mk_memtmp2,#1,#1
+        if_z  setword mk_memtmp2,#1,#1    ' DMA Length = 0 means 64K words
 
                ' Increment the source address now so we don't have to later
               mov pa,mk_memtmp1
@@ -4924,7 +4924,7 @@ vdpio_write16
 .do_fill
               getbyte mk_memtmp1,mk_memvalue,#1
               rdword mk_memtmp2,#vdp_dmalen_w wz
-        if_z  setword mk_memtmp2,#1,#1
+        if_z  setword mk_memtmp2,#1,#1 ' DMA Length = 0 means 64K words
               wrword #0,#vdp_dmalen_w
               debug("VRAM fill of ",uhex_word_(mk_memtmp2)," bytes with ",uhex_word_(mk_memtmp1)," to ",uhex_word_array_(#@vdp_io_address_w,#1)," and increment ",uhex_byte_array_(#@vdp_autoinc_b,#1))
               ' VRAM fill is very very strange
