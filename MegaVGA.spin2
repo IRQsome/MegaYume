@@ -106,13 +106,13 @@ case mode
     wrpin(basepin,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
     pinl(basepin)
   MODE_SVIDEO:
-    wrpin(basepin addpins 1,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
+    wrpin(basepin addpins 1,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
     pinl(basepin addpins 1)
   MODE_SVID_AND_COMP:
-    wrpin(basepin addpins 2,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
+    wrpin(basepin addpins 2,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
     pinl(basepin addpins 2)
   MODE_YPBPR:
-    wrpin((basepin+1) addpins 2,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
+    wrpin((basepin+1) addpins 2,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
     pinl((basepin+1) addpins 2)
   MODE_HDMI:
     wrpin(basepin addpins 7,P_DAC_124R_3V|P_BITDAC|($F7<<8))
