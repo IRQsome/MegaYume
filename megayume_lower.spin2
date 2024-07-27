@@ -6624,9 +6624,10 @@ opn_init
               mov opn_leftp,#AUDIO_LEFT
               mov opn_rightp,#AUDIO_RIGHT
               getqx opn_sampleRate
-              test opn_sampleRate,#255 wz
-        if_z  mov opn_arg1,##P_DAC_75R_2V|P_OE|P_DAC_DITHER_PWM
-        if_nz mov opn_arg1,##P_DAC_75R_2V|P_OE|P_DAC_DITHER_RND
+              'test opn_sampleRate,#255 wz
+        'if_z  mov opn_arg1,##P_DAC_75R_2V|P_OE|P_DAC_DITHER_PWM
+        'if_nz mov opn_arg1,##P_DAC_75R_2V|P_OE|P_DAC_DITHER_RND
+              mov opn_arg1,##P_DAC_75R_2V|P_OE|P_DAC_DITHER_PWM
 
 
               fltl     opn_leftp
