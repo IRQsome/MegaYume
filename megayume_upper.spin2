@@ -202,7 +202,6 @@ repeat
     c.strncat(@tmppath,@".SRM",MAX_PATH)
 
     init_sram(@tmppath)
-    bytefill(MKRAM_BASE,0,$10000)
 
     settile(MENU_PLANEA,0,0,"2"+ATTR_PAL2<<11)
     quit
