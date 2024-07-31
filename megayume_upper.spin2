@@ -70,6 +70,8 @@ long repeatkey,repeatnext
 
 long romsize,romfile,srmfile
 
+long selection
+
 long exmem_mailbox[8*3]
 
 long exmem_struct
@@ -168,6 +170,7 @@ repeat
       1:
         c.strncpy(@curdir,@tmppath,MAX_PATH)
         c.strncat(@curdir,@"/",MAX_PATH)
+        selection := 0
         next ' go for another round
       2:
         'msgbox_simple(@"ROM ok?")
@@ -737,7 +740,7 @@ DIRLIST_Y = 4
 DIRLIST_HEIGHT = 21
 
 
-PRI do_filechooser() | keys,x,y,tmp,gotfiles,tmp2,attr,selection,position,dirty
+PRI do_filechooser() | keys,x,y,tmp,gotfiles,tmp2,attr,position,dirty
 
 msgbox_simple(@"Accessing...")
 gotfiles := scandir()
@@ -756,8 +759,11 @@ show_shiftjis_string($2800/32,32,DIRLIST_X,DIRLIST_Y-1,MENU_PLANEA)
 
 
 
-selection := 0
-position := 0
+if selection +>= gotfiles
+  selection := 0
+  position := 0
+else
+  position := (selection - 2) <# (gotfiles - DIRLIST_HEIGHT) #> 0
 dirty := true
 repeatkey := 0
 
