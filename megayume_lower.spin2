@@ -100,7 +100,7 @@ opn_timerBflag byte 0
 ' registers loaded into render cog
 vdp_registers
 vdp_forceSPRreload      long 0
-vdp_flags               long 1<<VDPFLAG_H40  ' < $64
+vdp_flags               long 1<<VDPFLAG_H40
 vdp_planeAbase          long $C000
 vdp_planeBbase          long $E000
 vdp_windowbase          long $A000
@@ -136,6 +136,8 @@ sram_bankreg            byte %10 ' < $E3: $A130F1 reg value. bit0 enables SRAM b
 sram_write_tstamp       long 0 ' $E4: last write time stamp (|1 so as to never be zero)
 sram_map_start          long -1 ' < $E8: SRAM start address
 sram_map_end            long -1 ' < $EC: SRAM end address
+
+                        long OPN_SAMPLE_RATE ' < $F0: used by upper code
 
 
 
@@ -7014,6 +7016,9 @@ eg_slot                 long 0
 psg_out                 long $7F80
 opn_filter_left         long 0
 opn_filter_right        long 0
+decimator_left          long 0
+decimator_right         long 0
+decimator_scaleval      long trunc(2147483648.0 / ($7F80*6))
 
 
 ' OPN2 internal state
@@ -7503,7 +7508,28 @@ do_output
               testp    opn_rightp wc
   if_nc       jmp #$-1
               wypin      opn_arg1,opn_leftp
-       _ret_  wypin      opn_arg2,opn_rightp
+              wypin      opn_arg2,opn_rightp
+
+              sub        opn_arg1,opn_dac_center
+              sub        opn_arg2,opn_dac_center
+              muls       opn_arg1,decimator_scaleval
+              muls       opn_arg2,decimator_scaleval
+              adds       decimator_left,opn_arg1
+              adds       decimator_right,opn_arg2
+              cmp        opn_current_ch, #5 wz
+  if_nz       ret
+
+              sar decimator_right,#16
+              setword decimator_left,decimator_right,#0
+if DIGITAL_BASEPIN >= 0
+              wxpin decimator_left,#DIGITAL_BASEPIN
+else
+              nop
+end
+              mov decimator_left,#0
+      _ret_   mov decimator_right,#0
+
+
 
 
 '===========================================================

@@ -223,7 +223,7 @@ long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
 long 12             ' V front porch
 long 2              ' V sync
-long 34             ' V back porch
+long 33             ' V back porch
 long 0              ' extra pillar
 long 320            ' blank line
 long 8              ' H front porch
@@ -257,7 +257,7 @@ long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
 long 12             ' V front porch
 long 2              ' V sync
-long 34             ' V back porch
+long 33             ' V back porch
 long 160            ' extra pillar
 long 640            ' blank line
 long 56             ' H front porch
@@ -275,12 +275,12 @@ long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
 long 12             ' V front porch
 long 2              ' V sync
-long 34             ' V back porch
+long 33             ' V back porch
 long 0              ' extra pillar
 long 640            ' blank line
 long 56             ' H front porch
 long 96             ' H sync
-long 283            ' H back porch
+long 234            ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
@@ -292,12 +292,12 @@ long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
 long 12             ' V front porch
 long 2              ' V sync
-long 34             ' V back porch
+long 33             ' V back porch
 long 64             ' extra pillar
 long 768            ' blank line
 long 56             ' H front porch
 long 96             ' H sync
-long 155            ' H back porch
+long 106            ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
@@ -309,12 +309,12 @@ long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
 long 12             ' V front porch
 long 2              ' V sync
-long 34             ' V back porch
+long 33             ' V back porch
 long 80             ' extra pillar
 long 800            ' blank line
 long 56             ' H front porch
 long 96             ' H sync
-long 123            ' H back porch
+long 74             ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
@@ -326,12 +326,12 @@ long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
 long 12             ' V front porch
 long 2              ' V sync
-long 34             ' V back porch
+long 33             ' V back porch
 long 107            ' extra pillar
 long 854            ' blank line
 long 56             ' H front porch
 long 96             ' H sync
-long 69             ' H back porch
+long 20             ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
