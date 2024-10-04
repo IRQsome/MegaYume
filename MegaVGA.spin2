@@ -1,7 +1,18 @@
 CON
 
-  #0, MODE_VGA2X, MODE_VGA3X, MODE_VGA4X, MODE_VGA5X, MODE_COMPOSITE, MODE_SVIDEO, MODE_SVID_AND_COMP, MODE_HDMI, MODE_YPBPR, MODE_LCD6
-  #0, SUBMODE_NTSC, SUBMODE_PAL60
+  SUBMODE_NTSC = 0
+  SUBMODE_PAL = 1<<8 ' Can be combined with others...
+  SUBMODE_FORCE_ALTPILLAR = 1<<9 ' TODO NYI Can be combined with others...
+  SUBMODE_FORCE_REC601 = 1<<10 ' Force Rec601 color space for YPbPr
+  SUBMODE_FORCE_REC709 = 1<<11 ' Force Rec709 color space for YPbPr
+
+  #0,MODE_RGBHV,MODE_RGBS,MODE_SoG,MODE_YPBPR,MODE_COMPOSITE,MODE_SVIDEO,MODE_SVID_AND_COMP,MODE_DVI,MODE_DVI_VGA,MODE_HDMI,MODE_HDMI_VGA,MODE_LCD6
+
+  MODE_VGA = MODE_RGBHV
+
+  #0,SUBMODE_AUTO,SUBMODE_1X,SUBMODE_2X,SUBMODE_3X,SUBMODE_4X,SUBMODE_5X, ... ' Analog line-multiply modes
+  SUBMODE_TMDS_640x480,SUBMODE_TMDS_768x480,SUBMODE_TMDS_800x480,SUBMODE_TMDS_854x480
+
 
   #0, LCD_ILI9342
 
@@ -10,910 +21,1532 @@ CON
   ILI_VFLIP = %00010000 << 8
   ILI_BGR   = %00001000 << 8 ' Toggle this if colors are wrong
 
-  CONFIG_SIZE = 64 ' TODO: change to actual size
+
+  TMDS_REVERSE_FLAG = 64<<8
+
+  MAX_INIT = 64
 
 
+  WIDTH = 320
+  WIDTH_ALT = 256 ' Not used in NeoYume
 
-PUB start(lcptr,emptr,vbptr,mode,basepin,discrete_sync,submode) | i,tmp,lcdpins,cogn,modeptr,modebuf[4+CONFIG_SIZE]
-'' Note: discrete_vsync should be -1 for modes that don't need it. In HDMI mode, it indicates reverse mode
-'' In LCD_ILI9342 mode, the four bytes encode various pins:
-''  discrete_sync.byte[0] -> DOTCLK
-''  discrete_sync.byte[1] -> CS (for serial I/F)
-''  discrete_sync.byte[2] -> CLK (for serial I/F)
-''  discrete_sync.byte[3] -> SDA (for serial I/F)
+  HEIGHT = 224
+  BORDER_TOP = 8
+  BORDER_BOTTOM = 8
+  HEIGHT_TOTAL = HEIGHT+BORDER_BOTTOM+BORDER_TOP
 
+  VDPBIT_INTERLACE = 0
+  VDPBIT_ALTRES = 1
 
-case mode
-  MODE_VGA2X:
-    modeptr := @vga2x_config
-  MODE_VGA3X:
-    modeptr := @vga3x_config
-  MODE_VGA4X:
-    modeptr := @vga4x_config
-  MODE_VGA5X:
-    modeptr := @vga5x_config
-  MODE_COMPOSITE,MODE_SVIDEO,MODE_SVID_AND_COMP:
-    case submode
-      SUBMODE_NTSC:  modeptr := @ntsc_config
-      SUBMODE_PAL60: modeptr := @pal60_config
-    discrete_sync := -1
-  MODE_YPBPR:
-    modeptr := @ypbpr_config
-    discrete_sync := -1
-  MODE_HDMI:
-    modeptr := @hdmi_wide_config
-  MODE_LCD6:
-    modeptr := @lcd6_config
-  other: abort -1
+  VDPR_OFFSET = 2 ' lines that rendering has to run ahead
 
-clkset(computeClockMode(long[modeptr]),long[modeptr])
-longmove(@modebuf+16,modeptr+4,CONFIG_SIZE)
-case mode
-  MODE_COMPOSITE:
-    modebuf[46] |= %0_01_0_000_0 ' CMOD offset !!!!
-  MODE_HDMI:
-    if discrete_sync&1 ' Reverse mode
-      modebuf[46] |= 1<<7 ' CMOD offset !!!!
-    discrete_sync:=basepin&%111_000 ' Recycle this long to pass basepin into driver
-  MODE_LCD6:
-    lcdpins := discrete_sync
-    tmp := modebuf[51]' CFRQ offset !!!! (contains clock divider)
-    wrpin(basepin addpins 7,P_SYNC_IO)
-    pinf(lcdpins.byte[0])
-    wrpin(lcdpins.byte[0],P_OE|P_PULSE|P_SYNC_IO)
-    wxpin(lcdpins.byte[0],tmp + (tmp>>1)<<16)
-
-    case submode.byte[0]
-      LCD_ILI9342:
-        pinh(lcdpins.byte[1]) ' CS high
-        pinl(lcdpins.byte[2]) ' CLK low
-        pinf(lcdpins.byte[3]) ' float SDA
-        waitms(5)
-        ili_sendcmd(lcdpins,$01,0,0) ' Sleep out
-        waitms(5)
-        ili_sendcmd(lcdpins,$11,0,0) ' Soft reset
-        waitms(5)
-        ili_sendcmd(lcdpins,$29,0,0) ' Display ON
-        ili_sendcmd(lcdpins,$C8,3,$42_93_FF) ' Set EXTC (magic number?)
-        ili_sendcmd(lcdpins,$36,1,submode.byte[1]) ' Set MADCTL (user supplied)
-        ili_sendcmd(lcdpins,$B0,1,$6C) ' Set IFMODE (RGB, no DE pin, bypass memory, positive sync)
-        ' Pull timings out of mode
-        tmp := modebuf[5] ' VFP
-        tmp.byte[1] := modebuf[6] + modebuf[7] ' VBP
-        tmp.byte[2] := (modebuf[14]&$ffff) ' HFP
-        tmp.byte[3] := (modebuf[16]&$ffff)+(modebuf[18]&$ffff) ' HBP
-        'tmp := $38_05_02_02
-        ili_sendcmd(lcdpins,$B5,4,tmp)
-        ili_sendcmd(lcdpins,$26,1,$04) ' Set gamma to 2.5
-      other: abort -2
-    discrete_sync:=(basepin&%111_000) + (discrete_sync.byte[0]<<8)  ' Recycle this long to pass basepin/dotclk into driver
-
-
-modebuf[0] := vbptr
-modebuf[1] := lcptr
-modebuf[2] := emptr
-modebuf[3] := discrete_sync
-
-
-cogn := coginit(COGEXEC_NEW,@entry,@modebuf)
-if cogn < 0
-  abort cogn
+PUB start(pins,extrapins,mode,submode,buffer,extrastride,buflines,linectr,vdpmode,audio_mb_period) : cogn | cmode,timing,initf,stride
 
 case mode
-  MODE_VGA2X,MODE_VGA3X,MODE_VGA4X,MODE_VGA5X:
-    wrpin(basepin+0,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
-    wrpin((basepin+1) addpins 2,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
-    wrpin(discrete_sync,P_DAC_124R_3V|P_BITDAC|($F0<<8))
-    pinl(basepin addpins 3)
-  MODE_COMPOSITE:
-    wrpin(basepin,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
-    pinl(basepin)
-  MODE_SVIDEO:
-    wrpin(basepin addpins 1,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
-    pinl(basepin addpins 1)
-  MODE_SVID_AND_COMP:
-    wrpin(basepin addpins 2,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
-    pinl(basepin addpins 2)
-  MODE_YPBPR:
-    wrpin((basepin+1) addpins 2,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
-    pinl((basepin+1) addpins 2)
-  MODE_HDMI:
-    wrpin(basepin addpins 7,P_DAC_124R_3V|P_BITDAC|($F7<<8))
-    'wrpin(basepin addpins 7,P_LOW_1K5|P_HIGH_1K5)
-  MODE_LCD6:
-    waitms(1)
-    ili_sendcmd(lcdpins,$F6,3,$07_00_00) ' Set IFCTL (6 bit mode, enable ext. clock)
+  MODE_RGBHV..MODE_YPBPR: ' All arbitrary-resolution analog modes
+    case submode&255
+      SUBMODE_1X: timing := @timing_native
+      SUBMODE_3X: timing := @timing_line3x
+      other: timing := @timing_line2x
+      
+    case mode
+      MODE_RGBHV:
+        cmode := @cmode_rgbhv_tmds
+        initf := @init_rgbhv
+      MODE_RGBS:
+        cmode := @cmode_rgbs
+        initf := @init_rgbs
+      MODE_SoG:
+        cmode := @cmode_sync_on_green
+        initf := @init_soggy
+      MODE_YPBPR:
+        if submode&SUBMODE_FORCE_REC709 || (long[timing][1] >= 3 && not(submode&SUBMODE_FORCE_REC601))
+          cmode := @cmode_ypbpr709
+          debug("YPbPr matrix set to Rec709")
+        else
+          cmode := @cmode_ypbpr601
+          debug("YPbPr matrix set to Rec601")
+        initf := @init_soggy
+  MODE_COMPOSITE..MODE_SVID_AND_COMP: ' NTSC/PAL encoded modes
+    timing := @timing_native ' Always
+    if submode&SUBMODE_PAL
+      cmode := @cmode_pal
+    else
+      cmode := @cmode_ntsc
 
-waitms(1) ' wait for cog to have booted for sure before invalidating stack frame
+    case mode
+      MODE_COMPOSITE: initf := @init_composite
+      MODE_SVIDEO: initf := @init_svideo
+      MODE_SVID_AND_COMP: initf := @init_compsvid
 
+  MODE_DVI..MODE_HDMI_VGA: ' All TMDS modes
+    cmode := @cmode_rgbhv_tmds
+    case mode
+      MODE_DVI: initf := @init_dvi
+      MODE_DVI_VGA: initf := @init_dvivga
+      MODE_HDMI: initf := @init_hdmi
+      MODE_HDMI_VGA: initf := @init_hdmivga
+    case submode&255
+      SUBMODE_TMDS_768x480: timing := @timing_tmds_768x480
+      SUBMODE_TMDS_800x480: timing := @timing_tmds_800x480
+      SUBMODE_TMDS_854x480: timing := @timing_tmds_854x480
+      other: timing := @timing_tmds_640x480
+  other:
+    abort -1
 
-CON
+clkset(computeClockMode(long[timing]),long[timing])
 
-'' VDP vertical timing (well, conjecture about it, anyways):
-'' 6 background color lines
-'' 224 active lines (starts line 0 as per Vcounter)
-'' 10 background color lines
-'' 22 blank/sync lines
+stride := WIDTH*4+extrastride
 
-VDPR_OFFSET = 2 ' lines that rendering has to run ahead
+return startx(pins,extrapins,buffer,stride,buffer+stride*buflines,linectr,vdpmode,timing,cmode,initf,audio_mb_period)
 
+PUB startx(pins,extrapins,buffer_base,buffer_stride,buffer_wrap,linectr,vdpmode,timing,color,initfunc,audio_mb_period) : cogn
 
-DAT
+cogn := coginit(HUBEXEC_NEW,@video_init,@pins)
+waitms(1) ' wait so stack frame isn't rugpulled
 
-'' LCD 320x240 mode
-lcd6_config
-long 53_693_175*6
-' Timing
-long    1 - 1 ' line multiplier minus one
-long    3 ' native front porch lines
-long    9 ' native sync lines
-long    10 ' native back porch lines
-long    $08000000 ' Sync NCO value
-long    0 ' H40 NCO value
-long    0 ' H32 NCO value
-long    0 ' blanking color
+DAT ' Color modes
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (320*3) ' blank line
-long    0 ' extra pillar
+cmode_rgbhv_tmds ' RGBHV and TMDS hybrid mode
+long $00_00_00_00   ' DAC blanking value
+long TMDS_BLANK     ' Blanking color
+long TMDS_HSYNC     ' HSync color
+long TMDS_VSYNC     ' VSync color
+long TMDS_HVSYNC    ' HSync+VSync color
+long 0              ' Color burst color (NTSC/PAL only)
+long 0              ' Color burst frequency  (NTSC/PAL only)
+long $5A_00_00_00   ' CY
+long $00_5A_00_00   ' CI
+long $00_00_5A_00   ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (25*3), %00 ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (15*3), %01 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (67*3), %00 ' HSync section 3 (back porch)
-long                         0,0 ' HSync padding 4
-long                         0,0 ' HSync padding 5
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
+cmode_rgbs ' RGB + CSync mode
+long $00_00_00_00   ' DAC blanking value
+long $00_00_00_00   ' Blanking color
+long $00_00_00_01   ' HSync color
+long $00_00_00_01   ' VSync color
+long $00_00_00_00   ' HSync+VSync color
+long 0              ' Color burst color (NTSC/PAL only)
+long 0              ' Color burst frequency  (NTSC/PAL only)
+long $5A_00_00_00   ' CY
+long $00_5A_00_00   ' CI
+long $00_00_5A_00   ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
 
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (25*3), %10 ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (15*3), %11 ' VSync section 2 (sync pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + ((67+320)*3), %10 ' VSync section 3 (back porch + active)
-long                         0,0 ' VSync padding 4
-long                         0,0 ' VSync padding 5
-long                         0,0 ' VSync padding 6
-long                         0,0 ' VSync padding 7
-long                         0,0 ' VSync padding 8
+cmode_sync_on_green ' RGB SoG mode
+long $00_00_00_00   ' DAC blanking value
+long Y_BLANK        ' Blanking color
+long Y_SYNC         ' HSync color
+long Y_SYNC         ' VSync color
+long Y_BLANK        ' HSync+VSync color
+long 0              ' Color burst color (NTSC/PAL only)
+long 0              ' Color burst frequency  (NTSC/PAL only)
+long $5A_00_00<<8 + BLANK_LEVEL   ' CY
+long $00_5A_00<<8 + BLANK_LEVEL   ' CI
+long $00_00_5A<<8 + BLANK_LEVEL   ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
 
-' Color conversion
-long    negx + (1<<30)' CMOD mode + flags
-long    0 ' CY
-long    0 ' CI
-long    0 ' CQ
-long    0 ' CQ XORlternate value
-long    16 ' dot clock divider
+cmode_ypbpr601 ' YPbPr (with Rec. 601 matrix for SDTV)
+long $00_00_00_00   ' DAC blanking value
+long Y_BLANK        ' Blanking color
+long Y_SYNC         ' HSync color
+long Y_SYNC         ' VSync color
+long Y_BLANK        ' HSync+VSync color
+long 0              ' Color burst color (NTSC/PAL only)
+long 0              ' Color burst frequency  (NTSC/PAL only)
+long ( 45&$FF) << 24 + (-38&$FF) << 16 + ( -7&$FF) << 8 + 128   ' CY
+long ( 27&$FF) << 24 + ( 53&$FF) << 16 + ( 10&$FF) << 8 + BLANK_LEVEL   ' CI
+long (-15&$FF) << 24 + (-30&$FF) << 16 + ( 45&$FF) << 8 + 128   ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
+    
+cmode_ypbpr709 ' YPbPr (with Rec. 709 matrix for HDTV)
+long $00_00_00_00   ' DAC blanking value
+long Y_BLANK        ' Blanking color
+long Y_SYNC         ' HSync color
+long Y_SYNC         ' VSync color
+long Y_BLANK        ' HSync+VSync color
+long 0              ' Color burst color (NTSC/PAL only)
+long 0              ' Color burst frequency  (NTSC/PAL only)
+long ( 45&$FF) << 24 + (-41&$FF) << 16 + ( -4&$FF) << 8 + 128   ' CY
+long ( 19&$FF) << 24 + ( 64&$FF) << 16 + (  7&$FF) << 8 + BLANK_LEVEL   ' CI
+long (-10&$FF) << 24 + (-35&$FF) << 16 + ( 45&$FF) << 8 + 128   ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
 
-'' HDMI 800x480 mode
-hdmi_wide_config
-long 327_500_000
-' Timing
-long    2 - 1 ' line multiplier minus one
-long    10 ' native front porch lines
-long    2 ' native sync lines
-long    33 ' native back porch lines
-long    $0CCCCCCD ' Sync NCO value
-long    0 ' H40 NCO value
-long    0 ' H32 NCO value
-long    HDMI_BLANK ' blanking color
+cmode_ntsc
+long $00_00_00_00
+long %01            ' Blanking color
+long %11            ' HSync color
+long %11            ' VSync color
+long %01            ' HSync+VSync color
+long COLOR_BURST_NTSC ' Color burst color (NTSC/PAL only)
+long round(4_294_967_296.0*3_579_545.0/float(VIDEO_CLKFREQ))              ' Color burst frequency  (NTSC/PAL only)
+long CY_NTSC        ' CY
+long CI_NTSC        ' CI
+long CQ_NTSC        ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 800 ' blank line
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80 ' extra pillar
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 56, HDMI_BLANK ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96, HDMI_HSYNC ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96, HDMI_BLANK ' HSync section 3 (back porch)
-long                         0,0 ' HSync padding 4
-long                         0,0 ' HSync padding 5
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
-
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 56, HDMI_VSYNC ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96, HDMI_HVSYNC ' VSync section 2 (sync pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96 + 800,HDMI_VSYNC ' VSync section 3 (back porch + active)
-long                         0,0 ' VSync padding 4
-long                         0,0 ' VSync padding 5
-long                         0,0 ' VSync padding 6
-long                         0,0 ' VSync padding 7
-long                         0,0 ' VSync padding 8
-
-' Color conversion
-long    %10_0000000 + negx' CMOD mode + flags
-long    0 ' CY
-long    0 ' CI
-long    0 ' CQ
-long    0 ' CQ XORlternate value
-long    0 ' CFRQ
-
-
-'' VGA mode (using 13x clock multiplier -> 327_600_000 MHz)
-vga2x_config
-long 327_600_000
-' Timing
-long    2 - 1 ' line multiplier minus one
-long    10 ' native front porch lines
-long    2 ' native sync lines
-long    33 ' native back porch lines
-long    round(2147483648.0/13.0/2.0) ' Sync NCO value
-long    round(2147483648.0/13.0/2.0) ' H40 NCO value
-long    round(2147483648.0/13.0/2.0*256.0/320.0) ' H32 NCO value
-long    %00 ' blanking color
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
-long    0 ' extra pillar
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
-long                         0,0 ' HSync padding 4
-long                         0,0 ' HSync padding 5
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
-long                         0,0 ' VSync padding 4
-long                         0,0 ' VSync padding 5
-long                         0,0 ' VSync padding 6
-long                         0,0 ' VSync padding 7
-long                         0,0 ' VSync padding 8
-
-' Color conversion
-long    %0_01_1_000_1 ' CMOD mode + flags
-long    $5A_00_00_00 ' CY
-long    $00_5A_00_00 ' CI
-long    $00_00_5A_00 ' CQ
-long    $00_00_00_00 ' CQ XORlternate value
-long    0 ' CFRQ
-
-'' 720P mode - slightly nonstandard timing, (more like 3x240p than real 720p -> more blanking)
-'' Perhaps better values can be found
-vga3x_config
-long 327_600_000
-' Timing
-long    3 - 1 ' line multiplier minus one
-long    15 ' native front porch lines
-long    3 ' native sync lines
-long    48 ' native back porch lines
-long    round(2147483648.0/13.0/2.0*1.5) ' Sync NCO value
-long    round(2147483648.0/13.0/2.0*1.5) ' H40 NCO value
-long    round(2147483648.0/13.0/2.0*1.5*256.0/320.0) ' H32 NCO value
-long    %00 ' blanking color
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
-long    0 ' extra pillar
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
-long                         0,0 ' HSync padding 4
-long                         0,0 ' HSync padding 5
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
-long                         0,0 ' VSync padding 4
-long                         0,0 ' VSync padding 5
-long                         0,0 ' VSync padding 6
-long                         0,0 ' VSync padding 7
-long                         0,0 ' VSync padding 8
-
-' Color conversion
-long    %0_01_1_000_1 ' CMOD mode + flags
-long    $5A_00_00_00 ' CY
-long    $00_5A_00_00 ' CI
-long    $00_00_5A_00 ' CQ
-long    $00_00_00_00 ' CQ XORlternate value
-long    0 ' CFRQ
+cmode_pal
+long $00_00_00_00
+long %01            ' Blanking color
+long %11            ' HSync color
+long %11            ' VSync color
+long %01            ' HSync+VSync color
+long COLOR_BURST_PAL ' Color burst color (NTSC/PAL only)
+long round(4_294_967_296.0*4_433_618.0/float(VIDEO_CLKFREQ))              ' Color burst frequency  (NTSC/PAL only)
+long CY_PAL         ' CY
+long CU_PAL         ' CI
+long CV_PAL_EVEN    ' CQ
+long CV_PAL_ODD^CV_PAL_EVEN ' CQ XOR value (NTSC/PAL only)
 
 
+DAT ' Timings
 
-'' "double VGA" mode - like VGA mode, but linedoubled again - should give great results for H32 in particular
-'' TODO: Test on monitor that can handle it
-vga4x_config
-long 327_600_000
-' Timing
-long    4 - 1 ' line multiplier minus one
-long    10*2 ' native front porch lines
-long    2*2 ' native sync lines
-long    33*2 ' native back porch lines
-long    round(2147483648.0/13.0) ' Sync NCO value
-long    round(2147483648.0/13.0) ' H40 NCO value
-long    round(2147483648.0/13.0*256.0/320.0) ' H32 NCO value
-long    %00 ' blanking color
+timing_native
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 1              ' active line multiplier
+long 3              ' V front porch
+long 9              ' V sync
+long 12             ' V back porch
+long 0              ' extra pillar
+long 320            ' blank line
+long 8              ' H front porch
+long 28             ' H sync
+long 28             ' H back porch
+long round(2147483648.0/float(CLK_MULTIPLIER*4)) ' Sync NCO
+long round(2147483648.0/float(CLK_MULTIPLIER*4)) ' Pixel NCO
+long round(2147483648.0/float(CLK_MULTIPLIER*4)*256.0/320.0) ' Alt-res NCO
+long 3              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
+long 16             ' Burst (NTSC/PAL only - subtracts from H.BP)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
-long    0 ' extra pillar
+timing_line2x
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 12             ' V front porch
+long 2              ' V sync
+long 34             ' V back porch
+long 0              ' extra pillar
+long 320            ' blank line
+long 8              ' H front porch
+long 48             ' H sync
+long 24             ' H back porch
+long round(2147483648.0/13.45/2.0) ' Sync NCO
+long round(2147483648.0/13.45/2.0)      ' Pixel NCO
+long round(2147483648.0/13.45/2.0*256.0/320.0)              ' Alt-res NCO
+long 0              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
+long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
-long                         0,0 ' HSync padding 4
-long                         0,0 ' HSync padding 5
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
+timing_line3x
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 3              ' active line multiplier
+long 18             ' V front porch
+long 3              ' V sync
+long 51             ' V back porch
+long 0              ' extra pillar
+long 320            ' blank line
+long 8              ' H front porch
+long 48             ' H sync
+long 24             ' H back porch
+long round(2147483648.0/13.45/2.0*1.5) ' Sync NCO
+long round(2147483648.0/13.45/2.0*1.5)      ' Pixel NCO
+long round(2147483648.0/13.45/2.0*1.5*256.0/320.0)              ' Alt-res NCO
+long 0              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
+long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
-long                         0,0 ' VSync padding 4
-long                         0,0 ' VSync padding 5
-long                         0,0 ' VSync padding 6
-long                         0,0 ' VSync padding 7
-long                         0,0 ' VSync padding 8
-
-' Color conversion
-long    %0_01_1_000_1 ' CMOD mode + flags
-long    $5A_00_00_00 ' CY
-long    $00_5A_00_00 ' CI
-long    $00_00_5A_00 ' CQ
-long    $00_00_00_00 ' CQ XORlternate value
-long    0 ' CFRQ
-
-vga5x_config
-long 327_600_000
-' Timing
-long    5 - 1 ' line multiplier minus one
-long    10*3 ' native front porch lines
-long    2*3 ' native sync lines
-long    33*3 ' native back porch lines
-long    round(2147483648.0/13.0*1.2) ' Sync NCO value
-long    round(2147483648.0/13.0*1.2) ' H40 NCO value
-long    round(2147483648.0/13.0*1.2*256.0/320.0) ' H32 NCO value
-long    %00 ' blanking color
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
-long    0 ' extra pillar
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
-long                         0,0 ' HSync padding 4
-long                         0,0 ' HSync padding 5
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
-long                         0,0 ' VSync padding 4
-long                         0,0 ' VSync padding 5
-long                         0,0 ' VSync padding 6
-long                         0,0 ' VSync padding 7
-long                         0,0 ' VSync padding 8
-
-' Color conversion
-long    %0_01_1_000_1 ' CMOD mode + flags
-long    $5A_00_00_00 ' CY
-long    $00_5A_00_00 ' CI
-long    $00_00_5A_00 ' CQ
-long    $00_00_00_00 ' CQ XORlternate value
-long    0 ' CFRQ
-
-ntsc_config
-long 53_693_175*6
-' Timing
-long    1 - 1 ' line multiplier minus one
-long    1 ' native front porch lines
-long    -3 ' native sync lines (x3 because NTSC serration)
-long    12 ' native back porch lines
-long    round(2147483648.0/48.0)*4 ' Sync NCO value
-long    round(2147483648.0/48.0) ' H40 NCO value
-long    round(2147483648.0/48.0*256.0/320.0) ' H32 NCO value
-long    %01 ' blanking color
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320*4 ' blank line
-long    0 ' extra pillar
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 14,$01 ' HSync section 3 (breezeway)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80,COLOR_BURST_NTSC ' HSync section 4 (color burst)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 206 - 94,$01 ' HSync section 5 (back porch)
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
-
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 2 (short pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 631,$01 ' VSync section 3 (back porch + active)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$01 ' VSync section 4 (short pulse except not)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 5 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 6 (shot pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 675-108,$03 ' VSync section 7 (pulse extension)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64,$01 ' VSync section 8 (back porch + active)
-
-' Color conversion
-long    %0_10_1_000_0 ' CMOD mode + flags
-long    CY_NTSC ' CY
-long    CI_NTSC ' CI
-long    CQ_NTSC ' CQ
-long    0       ' CQ XORlternate value
-long    $2D82D83 ' CFRQ
+timing_owieouch
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 12             ' V front porch
+long 2              ' V sync
+long 34             ' V back porch
+long 160            ' extra pillar
+long 640            ' blank line
+long 56             ' H front porch
+long 96             ' H sync
+long 283            ' H back porch
+long $0CCCCCCD      ' Sync NCO
+long $0CCCCCCD      ' Pixel NCO
+long 2              ' Alt-res NCO
+long 0              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
+long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 
 
-pal60_config
-long 53_693_175*6
-' Timing
-long    1 - 1 ' line multiplier minus one
-long    1 ' native front porch lines
-long    -3 ' native sync lines (x3 because NTSC serration)
-long    12 ' native back porch lines
-long    round(2147483648.0/48.0)*4 ' Sync NCO value
-long    round(2147483648.0/48.0) ' H40 NCO value
-long    round(2147483648.0/48.0*256.0/320.0) ' H32 NCO value
-long    %01 ' blanking color
+timing_tmds_640x480
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 12             ' V front porch
+long 2              ' V sync
+long 34             ' V back porch
+long 0              ' extra pillar
+long 640            ' blank line
+long 56             ' H front porch
+long 96             ' H sync
+long 283            ' H back porch
+long $0CCCCCCD      ' Sync NCO
+long 0              ' Pixel NCO
+long 2              ' Alt-res NCO
+long 0              ' Unused
+long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320*4 ' blank line
-long    0 ' extra pillar
+timing_tmds_768x480
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 12             ' V front porch
+long 2              ' V sync
+long 34             ' V back porch
+long 64             ' extra pillar
+long 768            ' blank line
+long 56             ' H front porch
+long 96             ' H sync
+long 155            ' H back porch
+long $0CCCCCCD      ' Sync NCO
+long 0              ' Pixel NCO
+long 2              ' Alt-res NCO
+long 0              ' Unused
+long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 14,$01 ' HSync section 3 (breezeway)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80,COLOR_BURST_PAL ' HSync section 4 (color burst)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 206 - 94,$01 ' HSync section 5 (back porch)
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
+timing_tmds_800x480
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 12             ' V front porch
+long 2              ' V sync
+long 34             ' V back porch
+long 80             ' extra pillar
+long 800            ' blank line
+long 56             ' H front porch
+long 96             ' H sync
+long 123            ' H back porch
+long $0CCCCCCD      ' Sync NCO
+long 0              ' Pixel NCO
+long 2              ' Alt-res NCO
+long 0              ' Unused
+long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 2 (short pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 631,$01 ' VSync section 3 (back porch + active)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$01 ' VSync section 4 (short pulse except not)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 5 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 6 (shot pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 675-108,$03 ' VSync section 7 (pulse extension)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64,$01 ' VSync section 8 (back porch + active)
+timing_tmds_854x480
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 12             ' V front porch
+long 2              ' V sync
+long 34             ' V back porch
+long 107            ' extra pillar
+long 854            ' blank line
+long 56             ' H front porch
+long 96             ' H sync
+long 69             ' H back porch
+long $0CCCCCCD      ' Sync NCO
+long 0              ' Pixel NCO
+long 2              ' Alt-res NCO
+long 0              ' Unused
+long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
-' Color conversion
-long    %0_10_1_000_0 ' CMOD mode + flags
-long    CY_PAL ' CY
-long    CU_PAL ' CI
-long    CV_PAL_EVEN ' CQ
-long    CV_PAL_ODD^CV_PAL_EVEN ' CQ XORlternate value
-long    round((1.0/90.0 * 4_294_967_296.0)/3_579_545.0*4_433_618.75) ' CFRQ
-
-
-ypbpr_config
-long 53_693_175*6
-' Timing
-long    1 - 1 ' line multiplier minus one
-long    1 ' native front porch lines
-long    -3 ' native sync lines (x3 because NTSC serration)
-long    12 ' native back porch lines
-long    round(2147483648.0/48.0)*4 ' Sync NCO value
-long    round(2147483648.0/48.0) ' H40 NCO value
-long    round(2147483648.0/48.0*256.0/320.0) ' H32 NCO value
-long    Y_BLANK ' blanking color
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320*4 ' blank line
-long    0 ' extra pillar
-
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,Y_BLANK ' HSync section 1 (front porch)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_SYNC ' HSync section 2 (sync pulse)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 14,Y_BLANK ' HSync section 3 (breezeway)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80,Y_BLANK ' HSync section 4 (color burst)
-long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 206 - 94,Y_BLANK ' HSync section 5 (back porch)
-long                         0,0 ' HSync padding 6
-long                         0,0 ' HSync padding 7
-long                         0,0 ' HSync padding 8
-
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,Y_BLANK ' VSync section 1 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_SYNC ' VSync section 2 (short pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 631,Y_BLANK ' VSync section 3 (back porch + active)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_BLANK ' VSync section 4 (short pulse except not)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,Y_BLANK ' VSync section 5 (front porch)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_SYNC ' VSync section 6 (shot pulse)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 675-108+32,Y_SYNC ' VSync section 7 (pulse extension)
-long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64-32,Y_BLANK ' VSync section 8 (back porch + active)
-
-' Color conversion
-long    %0_01_1_010_0 ' CMOD mode + flags
-long    CPR_COMP_SDTV ' CY
-long    CY_COMP_SDTV ' CI
-long    CPB_COMP_SDTV ' CQ
-long    0       ' CQ XORlternate value
-long    0 ' CFRQ
-
-DAT
+DAT ' Cog-resident code
               org
-entry
-              setq #mode_end-mode_start-1
-              rdlong scanbuffer_base,ptra
+video_cog_code              
 
-              mov virtual_frame,#0
-              mov halflines,line_multiplier
-              add halflines,#1
-              shr halflines,#1
+hsync_ntsc ' also PAL
+              setq nco_sync
+              xcont hsync_tip,hsync_color
+              xcont hsync_breeze,blank_color
+              xor cq_val,cq_xor
+              setcq cq_val ' here because we know tip must be in progress
+              xcont hsync_burst,burst_color
+              xcont hsync_bpshort,blank_color
+              jmp #vline_update
 
-              testb cmod_val,#30 wc ' Have dotclk
-        if_c  getbyte dotclk_pin,discrete_vsync,#1
+vsync_ntsc    ' SDTV serrated sync
 
-              testb cmod_val,#31 wc ' Check pin mode?
-        if_nc jmp #.dacmode ' no
+              ' TODO
+              ret
 
-              getbyte tmp1,discrete_vsync,#0
 
-              setq #7
-              drvl tmp1 ' Enable pins
+scanfunc_2x_rgb24 ' scan out 2 pixels with 2x doubling -> 40 streamer cycles
+              ' actual function takes 18cy (inc. call overhead)
+              ' so 11 instructions can go between calls
+              rflong scantmp
+              andn scantmp,#255 ' mask alpha/control channel (DMA would do this for us)
+              xcont pixel_multiplier,scantmp
+              rflong scantmp
+              andn scantmp,#255
+        _ret_ xcont pixel_multiplier,scantmp
 
-              ' Patch pins into commands
-              shl tmp1,#17
-              bith tmp1,#encod X_PINS_ON
-              or solid_command,tmp1
-              or pillar_command,tmp1
-              or h40_command,tmp1
-              or h32_command,tmp1
-              or hdmi_command,tmp1
-              or lcd6_command,tmp1
+
+line_scancomp ' Software-scaled line with scan-compensated task
               cmp extra_pillar,#0 wz
-        if_nz or extra_pillar,tmp1
+        if_nz xcont extra_pillar,border_color
 
-              setd sync_alti,#hsync_sequence_buffer
-              rep @.patch_sequences,#8+8
+              mov scantimecomp,#WIDTH/2
+              mov scanfunc,#scanfunc_2x_rgb24
+              call scantask
+.comploop     cmpsub scantimecomp,#1 wc
+        if_c  call scanfunc
+        if_c  call audio_poll_func
+        if_c  jmp #.comploop
 
-              alti sync_alti,#%000_100_000
-              cmp 0-0,#0 wz
-        if_nz alti sync_alti,#%000_100_000
-        if_nz or 0-0,tmp1
-              add sync_alti,con_402h
-.patch_sequences
+              cmp extra_pillar,#0 wz
+        if_nz xcont extra_pillar,border_color
+        _ret_ xcont hsync_fp,blank_color
 
-              neg discrete_vsync,#1
+dummy_func
+              ret
 
-.dacmode
-              ' setup CSC
-              setcmod cmod_val
+vsync_pin     long -1
+border_color  long $00_00_00_00
+altres_pillar long (WIDTH - WIDTH_ALT)/2
+linecmd       long WIDTH
+linecmd_alt   long WIDTH_ALT
+bitbangcmd    long 1
+packetblank   long 32
+bit31         long 1<<31
+min31         long $C000_0000
+max31         long $3FFF_FFFF
+
+hsync_func     long hsync_normal
+vbi_hsync_func long hsync_normal
+vsync_func     long vsync_normal
+line_func      long line_native
+altline_func   long line_native_altnco
+borderline_func long line_border
+blankline_func long line_blank
+audio_poll_func long dummy_func
+scanfunc        long dummy_func
+scantask        long dummy_func
+
+' Audio poller upper - pin number is patched in on demand
+audio_poll_repo
+              cmp audio_inbuf_level,#4 wc
+.pptchd if_c  testp #0-0 wc ' TESTP is a D-only instr
+        if_c  altd audio_inbuf_level,.inbuf_incr
+.pptchs if_c  rdpin 0-0,#0-0
+              ret wcz
+.inbuf_incr   long audio_inbuffer + (1<<9)
+
+
+                         '|||| 48K rate here!!!       | Disable copy protection
+spdif_status  long %00_00_0010_00000000_00000000_00000100
+                                                   '|||| 24 bit sample length (load bearing)
+              long %00000000_00000000_00000000_0000_1011
+' Sample rate is overwritten by init code when appropriate
+
+
+' application parameters (must by synced with startx arglist)
+app_params
+vpins                   res 1 ' furled up analog+digital
+extravpins              res 1 ' used for VSYNC etc
+scanbuffer_base         res 1
+scanbuffer_stride       res 1
+scanbuffer_wrap         res 1 ' base + (stride*lines)
+linectr_ptr             res 1
+vdpmode_ptr             res 1
+timing_ptr              res 1
+color_ptr               res 1
+initfunc_ptr            res 1
+audio_period            res 1
+app_params_end
+
+
+' Timing variables
+timing_vars
+dummy_clkfreq   res 1 ' handled by Spin code
+line_multiplier res 1 ' 0 will create SDTV-style serrated VSync with real interlacing
+fp_lines        res 1
+sync_lines      res 1
+bp_lines        res 1
+extra_pillar    res 1 ' permanent pillarbox (left and right) in nco_sync units
+blankline       res 1 ' blank line in nco_sync units
+hsync_fp      res 1
+hsync_tip     res 1
+hsync_bp      res 1
+nco_sync      res 1
+nco_main      res 1 ' only for analog modes!
+pixel_multiplier ' alias
+nco_alt       res 1 ' only for analog modes!
+hsync_breeze  res 1 ' NTSC/PAL only - subtracts from bp
+hsync_guardband ' alias - HDMI only
+hsync_burst   res 1 ' NTSC/PAL only - subtracts from bp
+timing_vars_end
+
+' Color space variables
+color_vars
+dac_blanking  res 1 ' DAC blanking values
+blank_color   res 1
+hsync_color   res 1
+vsync_color   res 1
+hvsync_color  res 1
+burst_color   res 1 ' NTSC/PAL only
+burst_freq    res 1 ' NTSC/PAL only
+cy_val        res 1
+ci_val        res 1
+cq_val        res 1
+cq_xor        res 1 ' NTSC/PAL only
+color_vars_end
+
+subline_incmod res 1
+borderline res 1
+hsync_bpshort res 1 ' NTSC/PAL: BP - (breeze+burst)
+blankline_packets res 1 ' rest of blanking line after packets (HDMI only)
+
+lines_left res 1 ' lines left in current section
+scanptr res 1
+vdp_mode res 1
+
+scantimecomp res 1 ' Time compensator for threaded scan conversion
+
+subline res 1
+virtual_line res 1
+virtual_frame res 1
+
+temp1 res 1
+temp2 res 1
+temp3 res 1
+temp4 res 1
+scantmp res 1
+
+spleft res 1
+spright res 1
+
+
+' audio-related, all needs zero-ing before use
+audio_clear_start
+audio_hist        res 4
+audio_inbuffer    res 4
+audio_inbuf_level res 1
+resample_ratio_frac res 1
+resample_ratio_int res 1
+resample_antidrift_period res 1
+resample_phase_frac res 1
+resample_phase_int  res 1
+resample_antidrift_phase res 1
+spdif_phase res 1
+hdmi_regen_counter res 1
+audio_clear_end
+
+hdmi_regen_period res 1
+
+' Unrelated TERC4-related nonsense
+serbyte       res 1
+u1 ' alias for resampler
+serch0        res 1
+u2 ' alias for resampler
+serch1        res 1
+u3 ' alias for resampler
+serch2        res 1
+ ' Byte 0 is HSync flag(00/FF), Byte 1 is VSync(00/FF), Byte 2 is Island start bit (FF/FE) - must match the timeslot the packet will be sent in
+packet_extra  res 1 ' can't be in overlay because common code writes it
+
+
+              fit $0B0
+              org $0B0
+video_ovl_area              
+
+
+DAT ' LUT resident code
+
+              ' 200 to 2FF is reserved for palette (not used here)
+              ' 300 to 35F is used as buffer space (3 encoded HDMI packets fit)
+              ' so code starts at 360, space for 160 instructions
+              org $300
+packet_aviinfo res 32
+packet_audio   res 32
+packet_aclk    res 32
+packet_aclk_v  res 32
+              fit $380
+              org $380
+video_lut_code
+video_entry
+              'xinit blankline,blank_color
+frame_loop
+              'debug(udec(virtual_frame),uhex_long(linecmd,extra_pillar,hsync_fp,hsync_tip,hsync_bp,nco_sync,nco_main))
+              neg virtual_line,#32-VDPR_OFFSET ' TODO: Magic number
+              mov subline,subline_incmod
+
+              mov lines_left,fp_lines
+.front_porch 
+              call vbi_hsync_func
+              cmp lines_left,#1 wz
+        if_z  setbyte packet_extra,#$FF,#1 ' Last line of FP builds packet for 1st line of Sync
+              call blankline_func  
+              djnz lines_left,#.front_porch
+
+              mov lines_left,sync_lines
+.vsync
+              cmp lines_left,#1 wz
+        if_z  setbyte packet_extra,#$00,#1 ' Last line of Sync builds packet for 1st line of BP
+              call vsync_func
+              djnz lines_left,#.vsync
+
+              mov lines_left,bp_lines
+.back_porch
+              call vbi_hsync_func
+              call blankline_func   
+              djnz lines_left,#.back_porch
+
+              neg virtual_line,#BORDER_TOP - VDPR_OFFSET ' TODO SHOULD FLE INSTEAD
+              mov subline,#0
+              mov lines_left,#BORDER_TOP
+              mul lines_left,line_multiplier
+              ' TODO Interlace bob here
+.top_border
+              call hsync_func
+              call borderline_func
+              djnz lines_left,#.top_border
+
+              mov lines_left,#HEIGHT
+              mul lines_left,line_multiplier
+              mov scanptr,scanbuffer_base
+              add virtual_frame,#1
+              rdlong vdp_mode,vdpmode_ptr ' read VDP mode here, once.
+.visible
+              call hsync_func
+              rdfast bit31,scanptr ' fire up FIFO
+              cmp subline,#0 wz
+        if_z  add scanptr,scanbuffer_stride
+              cmp scanptr,scanbuffer_wrap wc
+        if_ae mov scanptr,scanbuffer_base
+              
+              testb vdp_mode,#VDPBIT_ALTRES wc
+        if_nc mov pa,line_func
+        if_c  mov pa,altline_func
+              call line_func
+              'call borderline_func
+
+              djnz lines_left,#.visible
+
+
+              mov lines_left,#BORDER_BOTTOM
+              mul lines_left,line_multiplier
+              ' TODO Interlace bob here
+.bottom_border
+              call hsync_func
+              call borderline_func
+              djnz lines_left,#.bottom_border
+
+              jmp #frame_loop
+
+
+vline_update ' update line count to client and scanptr
+              setq #1
+              wrlong virtual_line,linectr_ptr
+              incmod subline,subline_incmod wc
+        if_c  add virtual_line,#1
+              ret
+              
+line_native  ' native scanline
+              cmp extra_pillar,#0 wz
+        if_nz xcont extra_pillar,border_color
+              setq nco_main
+              xcont linecmd,#0 ' No color needed for DMA
+        if_nz setq nco_sync
+        if_nz xcont extra_pillar,border_color
+              setq nco_sync
+        _ret_ xcont hsync_fp,blank_color
+
+line_native_altnco ' alt-res scanline with NCO switch
+              cmp extra_pillar,#0 wz
+        if_nz xcont extra_pillar,border_color
+              setq nco_alt
+              xcont linecmd_alt,#0 ' No color needed for DMA
+        if_nz setq nco_sync
+        if_nz xcont extra_pillar,border_color
+              setq nco_sync
+        _ret_ xcont hsync_fp,blank_color
+
+line_native_altpillar ' alt-res scanline with pillarbox
+              cmp extra_pillar,#0 wz
+        if_nz xcont extra_pillar,border_color
+              setq nco_main
+              xcont altres_pillar,border_color
+              xcont linecmd_alt,#0 ' No color needed for DMA
+              xcont altres_pillar,border_color
+        if_nz setq nco_sync
+        if_nz xcont extra_pillar,border_color
+              setq nco_sync
+        _ret_ xcont hsync_fp,blank_color
+
+fp_audio_pollloop ' this will poll audio unitl the front porch begins
+              xcont hsync_fp,blank_color
+audio_pollloop
+              call audio_poll_func
+        _ret_ jnxmt #audio_pollloop
+
+line_border ' border line
+              setq nco_sync
+              xcont borderline,border_color
+              mov scanfunc,#dummy_func
+              call scantask
+              jmp #fp_audio_pollloop
+line_blank ' blanking line
+              setq nco_sync
+              xcont blankline,blank_color
+              mov scanfunc,#dummy_func
+              call scantask
+              jmp #fp_audio_pollloop
+
+
+hsync_normal
+              setq nco_sync
+              xzero hsync_tip,hsync_color ' when this latches, FP is beginning
+              tjs vsync_pin,#.no_v
+              drvh vsync_pin ' should only be 4 cycles late
+.no_v         xcont hsync_bp,blank_color
+              jmp #vline_update
+      
+
+vsync_normal ' Vsync line including sync etc
+              setq nco_sync
+              xzero hsync_tip,hvsync_color ' when this latches, FP is beginning
+              tjs vsync_pin,#.no_v
+              drvl vsync_pin ' should only be 4 cycles late
+.no_v         xcont hsync_bp,vsync_color
+              call #vline_update ' update client on time
+              xcont blankline,vsync_color
+        _ret_ xcont hsync_fp,vsync_color
+
+              fit $400
+DAT ' HDMI overlay code
+              org video_ovl_area
+hdmi_overlay
+
+' TERC4 encoder table
+' bit 0 on ch0 is HSync, so VGA sync bit is set to match
+terctable     long TERC_0 * $401004 + %10
+              long TERC_1 * $401004 + %11
+              long TERC_2 * $401004 + %10
+              long TERC_3 * $401004 + %11
+              long TERC_4 * $401004 + %10
+              long TERC_5 * $401004 + %11
+              long TERC_6 * $401004 + %10
+              long TERC_7 * $401004 + %11
+              long TERC_8 * $401004 + %10
+              long TERC_9 * $401004 + %11
+              long TERC_A * $401004 + %10
+              long TERC_B * $401004 + %11
+              long TERC_C * $401004 + %10
+              long TERC_D * $401004 + %11
+              long TERC_E * $401004 + %10
+              long TERC_F * $401004 + %11
+
+tmds_ch1_mask      long $3FF << 12
+tmds_ch2_mask      long $3FF << 22
+
+spdif_parity_mask  long $7_FFFFFF
+
+'' HDMI-related small functions
+
+'island_tx_h
+              'mov pa,##TMDS_GUARDDAT_H
+island_tx
+              ' guard character in PA, length in PB, data at PTRA
+              xcont hsync_guardband,pa
+              rep @.loop,pb ' PB is latched, we can clobber it
+              rdlut pb,ptra++
+              xcont bitbangcmd,pb
+.loop
+        _ret_ xcont hsync_guardband,pa
+
+audio_island_tx_hv
+              mov pa,##TMDS_GUARDDAT_HV
+              mov temp1,hvsync_color
+              loc ptrb,#\packet_aclk_v
+              jmp #audio_island_tx
+audio_island_tx_h
+              mov pa,##TMDS_GUARDDAT_H
+              mov temp1,hsync_color
+              loc ptrb,#\packet_aclk
+audio_island_tx
+              cmpsub hdmi_regen_counter,hdmi_regen_period wc
+        if_nc xcont packetblank,temp1
+              loc ptra,#\packet_audio
+              xcont hsync_guardband,pa
+              rep @.loop,#32
+              rdlut pb,ptra++
+              xcont bitbangcmd,pb
+.loop
+        if_nc jmp #.no2nd
+              rep @.loop2,#32
+              rdlut pb,ptrb++
+              xcont bitbangcmd,pb
+.loop2
+.no2nd
+        _ret_ xcont hsync_guardband,pa
+
+
+hsync_hdmi_vbi ' Hsync during V blanking
+              call audio_poll_func
+              xzero hsync_tip,hsync_color ' this is the data preamble
+              tjs vsync_pin,#.no_v
+              drvh vsync_pin ' should only be 4 cycles late
+.no_v         
+              call #audio_island_tx_h
+              xcont hsync_bp,blank_color
+              call audio_poll_func
+              jmp #vline_update
+
+hsync_hdmi_previd ' Hsync during active video
+              call audio_poll_func
+              xzero hsync_tip,hsync_color
+              call #audio_island_tx_h
+              xcont hsync_bpshort,##TMDS_PREVID
+              call audio_poll_func
+              xcont hsync_guardband,##TMDS_GUARDVID ' take note that this is a mere 20 cycles
+              jmp #vline_update
+
+vsync_hdmi
+              call audio_poll_func
+              xzero hsync_tip,hvsync_color
+              tjs vsync_pin,#.no_v
+              drvl vsync_pin ' should only be 4 cycles late
+.no_v         
+              call #audio_island_tx_hv
+              cmp lines_left,sync_lines wz
+        if_nz jmp #.no_infopkt
+              ' send extra data on first line of Vsync (arbitrary convenient time)
+              xcont hsync_bp,##TMDS_PREDAT_V ' Preamble in backporch
+              call audio_poll_func
+              call #vline_update ' update client on time
+              mov pb,#INFO_PACKETS*32
+              loc ptra,#\packet_aviinfo
+              callpa ##TMDS_GUARDDAT_V,#island_tx
+              xcont blankline_packets,vsync_color ' Shortened
+.vsyn_task    mov scanfunc,#dummy_func
+              call scantask
+              call audio_poll_func
+              xcont hsync_fp,vsync_color
+              jmp #audio_pollloop
+.no_infopkt
+              xcont hsync_bp,vsync_color
+              call #vline_update ' update client on time
+              xcont blankline,vsync_color
+              jmp #.vsyn_task
+
+'' Packet-related functions
+
+build_audio 
+              'debug("Welcome to build_audio la-la-land")
+              call scanfunc
+              call audio_poll_func
+              sub scantimecomp,#2
+              call scanfunc
+              mov packet_header,#$02
+              loc ptrb,#\packet_audio ' Where we will put thy hallowed packet
+
+              mov temp3,#0
+.sploop
+
+              tjz resample_phase_int,#.dosp
+.feed
+              tjz audio_inbuf_level,#.spdone
+              sub scantimecomp,#2 ' feed loop
+              call scanfunc
+
+              mov audio_hist+0,audio_hist+1
+              mov audio_hist+1,audio_hist+2
+              mov audio_hist+2,audio_hist+3
+              mov audio_hist+3,audio_inbuffer+0
+              mov audio_inbuffer+0,audio_inbuffer+1
+              mov audio_inbuffer+1,audio_inbuffer+2
+              mov audio_inbuffer+2,audio_inbuffer+3
+              sub audio_inbuf_level,#1
+              call scanfunc
+              djnz resample_phase_int,#.feed ' always fall through if ratio < 2
+
+.dosp         ' Create an output sample using cubic resampling
+              sub scantimecomp,#6+6 ' dosp (cubic)
+              call scanfunc
+
+              getword u1,resample_phase_frac,#1
+              mov u2,u1
+              mul u2,u1
+              shr u2,#16
+              mov u3,u2
+              mul u3,u1
+              shr u3,#16
+
+              call scanfunc
+
+              mov temp1,u3
+              sub temp1,u2
+              sub temp1,u2
+              add temp1,u1
+              sar temp1,#2
+              getword temp4,audio_hist+0,#1
+              muls temp4,temp1
+              neg spleft,temp4
+              muls temp1,audio_hist+0 ' muls ignores upper half
+              neg spright,temp1
+
+              call scanfunc
+
+              mov temp1,u3
+              mul temp1,#3
+              mov temp2,u2
+              mul temp2,#5
+              subr temp1,temp2
+              mov temp2,temp1 ' +u2*5 -u3*3 (for later)
+              sub temp1,##$20000
+              sar temp1,#2
+              getword temp4,audio_hist+1,#1
+              muls temp4,temp1
+              sub spleft,temp4
+
+              call scanfunc
+
+              muls temp1,audio_hist+1 ' muls ignores upper half
+              sub spright,temp1
+
+              neg temp1,temp2 ' -u2*5 +u3*3
+              add temp1,u2
+              sub temp1,u1
+              sar temp1,#2
+              getword temp4,audio_hist+2,#1
+              muls temp4,temp1
+              sub spleft,temp4
+              muls temp1,audio_hist+2 ' muls ignores upper half
+              sub spright,temp1
+
+              call scanfunc
+
+              neg temp1,u3
+              add temp1,u2
+              sar temp1,#2
+              getword temp4,audio_hist+3,#1
+              muls temp4,temp1
+              sub spleft,temp4
+              muls temp1,audio_hist+3 ' muls ignores upper half
+              sub spright,temp1
+
+              call scanfunc
+
+              fges spleft,min31
+              fles spleft,max31
+              fges spright,min31
+              fles spright,max31
+
+              call scanfunc
+
+              shr spleft,#7
+              shr spright,#7
+              zerox spleft,#23
+              zerox spright,#23
+
+              decmod resample_antidrift_phase,resample_antidrift_period wc
+        if_c  mov resample_phase_frac,#0
+        if_nc add resample_phase_frac,resample_ratio_frac wc
+              addx resample_phase_int,resample_ratio_int
+
+              call scanfunc
+
+              ' Set sample as valid in header
+              alts temp3,#8
+              bith packet_header,#0-0
+              ' Advance channel status
+              incmod spdif_phase,#191 wc
+        if_c  alts temp3,#20
+        if_c  bith packet_header,#0-0
+
+              call scanfunc
+
+              ' Add S/PDIF status bit
+              cmp spdif_phase,#64 wc
+        if_c  altb spdif_phase,#spdif_status
+        if_c  testb 0-0,spdif_phase wc
+              bitc spleft,#26
+              bitc spright,#26
+
+              call scanfunc
+              ' set parity bits
+              test spleft,spdif_parity_mask wc
+              bitc spleft,#27
+              test spright,spdif_parity_mask wc
+              bitc spright,#27
+              ' store into subpacket
+              mov temp2,temp3
+              shl temp2,#1
+
+              altd temp2,#packet_data0+0
+              mov 0-0,spleft
+              altd temp2,#packet_data0+0
+              setbyte 0-0,spright,#3
+
+              call scanfunc
+
+              getnib temp1,spright,#6
+              rolnib temp1,spleft,#6
+              rolbyte temp1,spright,#2
+              altr temp2,#packet_data0+1
+              rolbyte temp1,spright,#1
+
+              add hdmi_regen_counter,#1
+
+              incmod temp3,#2-1 wc ' This limits it to encoding 2 samples per scanline, which ought to be enough
+              ' Hacky check to fix sampling jitter:
+              '  Packets where frac->int overflow occurs are only allowed in first packet slot
+              '  This is probably bad and a better way should be found.
+              mov temp1,resample_phase_frac
+.jptch1 if_nc add temp1,resample_ratio_frac wc ' Check if next frac add or
+.jptch2 if_nc cmp resample_antidrift_phase,#1 wc ' antidrift overflows
+              call scanfunc
+        if_nc jmp #.sploop
+.spdone
+              ' fall straight into packet encoder
+
+
+terc_encode   ' PACKET ENCODER
+              call scanfunc
+              sub scantimecomp,#3
+              call audio_poll_func
+              call scanfunc
+
+              ' Compute header checksum
+              mov temp2,#0
+              mov temp1,packet_header
+              rev temp1
+              setq temp1
+              rep #1,#6
+              crcnib temp2,#PACKET_CRC
+
+              call scanfunc
+
+              setbyte packet_header,temp2,#3
+              'debug("Header CRC: ",uhex(temp2))
+              'debug(uhex_long(packet_header))
+
+              ' Compute subpacket checksums
+              ' TODO can we do this in reverse?
+              mov temp3,#0
+.spackcrclp
+              sub scantimecomp,#3
+
+              mov temp2,#0
+              alts temp3,#packet_data0
+              mov temp1,0-0
+              rev temp1
+
+              call scanfunc
+
+              setq temp1
+              rep #1,#8
+              crcnib temp2,#PACKET_CRC
+
+              call scanfunc
+
+              alts temp3,#packet_data0+1
+              mov temp1,0-0
+              rev temp1
+              setq temp1
+              rep #1,#6
+              crcnib temp2,#PACKET_CRC
+
+              call scanfunc
+
+              altd temp3,#packet_data0+1
+              setbyte 0-0,temp2,#3
+              'debug("Subpacket CRC: ",uhex(temp2))
+              add temp3,#2
+              cmp temp3,#8 wc
+      if_b    jmp #.spackcrclp
+
+              '' Encode to TERC4
+              mov serbyte,#0
+              'setd packetptr,#packet_buffer
+              ' Assume PTRB is an appropriate LUT pointer to deposit 32 longs of encoded TERC4
+.serloop
+              sub scantimecomp,#3 + (3*4)
+              call scanfunc
+
+              ' serialize ch0
+              cmp serbyte,#0 wz
+        if_z  rolbyte serch0,packet_extra,#2 ' FE for first packet in island, FF otherwise
+        if_nz rolbyte serch0,#$FF,#0
+              altgb serbyte,#packet_header
+              rolbyte serch0
+              'rolbyte serch0,packet_vsync,#0 ' VSYNC on(?)
+              'rolbyte serch0,#$FF,#0 ' HSYNC on
+              rolword serch0,packet_extra,#0 ' Set sync status
+
+              altgw serbyte,#packet_data3
+              rolword temp1
+
+              call scanfunc
+
+              altgw serbyte,#packet_data2
+              rolword temp1
+              splitw temp1
+              rolword serch1,temp1,#0
+              rolword serch2,temp1,#1
+
+              altgw serbyte,#packet_data1
+              rolword temp1
+              altgw serbyte,#packet_data0
+              rolword temp1
+              splitw temp1
+
+              call scanfunc
+
+              rolword serch1,temp1,#0
+              rolword serch2,temp1,#1
+
+              mergeb serch0
+              mergeb serch1
+              mergeb serch2
+              'debug("TERC bytes ",uhex_long(serch0,serch1,serch2))
+
+              mov temp4,#4
+.byteenc
+              getnib temp1,serch0,#0
+              alts temp1,#terctable
+              mov temp2,0-0 ' This also copies HSync bit for VGA
+              getnib temp1,serch0,#1
+
+              call scanfunc
+
+              alts temp1,#terctable
+              mov temp3,0-0 ' This also copies HSync bit for VGA
+
+              getnib temp1,serch1,#0
+              setq tmds_ch1_mask
+              alts temp1,#terctable
+              muxq temp2,0-0
+              getnib temp1,serch1,#1
+              alts temp1,#terctable
+              muxq temp3,0-0
+
+              call scanfunc
+
+              getnib temp1,serch2,#0
+              setq tmds_ch2_mask
+              alts temp1,#terctable
+              muxq temp2,0-0
+              getnib temp1,serch2,#1
+              alts temp1,#terctable
+              muxq temp3,0-0
+
+              wrlut temp2,ptrb++
+              wrlut temp3,ptrb++
+              'debug("packet enc ",uhex_(temp2))
+              'debug("packet enc ",uhex_(temp3))
+
+              call scanfunc
+              shr serch0,#8
+              shr serch1,#8
+              shr serch2,#8
+              djnz temp4,#.byteenc
+
+              incmod serbyte,#3   wc
+    if_nc     jmp #.serloop  
+
+
+              sub scantimecomp,#1
+              jmp scanfunc ' tail call
+
+' TERC packet pre-encoding buffers
+packet_header res 1
+packet_data0  res 2
+packet_data1  res 2
+packet_data2  res 2
+packet_data3  res 2
+
+              fit 496
+
+
+DAT ' Hub init code
+              orgh
+
+video_init
+              ' load common code
+              loc pa,#@video_cog_code
+              setq #video_ovl_area-1
+              rdlong 0,pa
+
+              loc pa,#@video_lut_code
+              setq2 #511-(video_lut_code-512)
+              rdlong video_lut_code-512,pa
+
+              setq #(app_params_end - app_params - 1)
+              rdlong app_params,ptra
+
+              debug(uhex_long(vpins,extravpins))
+              debug(uhex_long(scanbuffer_base,scanbuffer_stride,scanbuffer_wrap))
+
+              setq #(timing_vars_end - timing_vars - 1)
+              rdlong timing_vars,timing_ptr
+
+              debug(udec(fp_lines,sync_lines,bp_lines))
+
+              setq #(color_vars_end - color_vars - 1)
+              rdlong color_vars,color_ptr
+
+              setxfrq nco_sync
+
+              mov subline_incmod,line_multiplier
+              cmpsub subline_incmod,#1
+
+              mov borderline,blankline ' dup
+
+              ' setup basic CSC parameters
               setcy cy_val
               setci ci_val
               setcq cq_val
-              setcfrq cfrq_val
+              setdacs dac_blanking ' default CSC color when streamer masked
+
+              mov virtual_frame,#0
+
+              jmp initfunc_ptr
 
 
-              setxfrq pixelnco_sync
-              cmps dotclk_pin,#0 wc
-        if_ae drvl dotclk_pin
-              xinit solid_command,#0
-
-do_frame
-
-              cmps dotclk_pin,#0 wc
-        if_ae wypin bit31,dotclk_pin
-{
-              mov tmp1,##525
-.tstvis
-              cmp tmp1,#2 wc
-              drvnc discrete_vsync
-              call #black_line
-              djnz tmp1,#.tstvis
-              jmp #do_frame
-}
-
-              '' Do blanking/sync
-              neg virtual_line,#28+1-VDPR_OFFSET
-              mov subline,line_multiplier
-              ' do front porch
-              mov tmp1,fp_lines
-.fp
-              call #do_hsync
-              call #blanking_vline_update
-              setq pixelnco_sync
-              xcont solid_command,blank_color
-              djnz tmp1,#.fp
-              ' do Vsync
-              rdlong vdp_mode,vdpmode_ptr
-              mov vdp_mode_fr,vdp_mode
-              mov tmp1,sync_lines wc
-        if_c  jmp #ntsc_vsync
-              cmps discrete_vsync,#0 wc
-        if_ae drvl discrete_vsync
-.sync
-              setq pixelnco_sync
-              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
-              xcont vsync_sequence_buffer+2,vsync_sequence_buffer+3
-              call #blanking_vline_update
-              xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
-              tjz vsync_sequence_buffer+6,#.sync_done
-              xcont vsync_sequence_buffer+6,vsync_sequence_buffer+7
-              tjz vsync_sequence_buffer+8,#.sync_done
-              xcont vsync_sequence_buffer+8,vsync_sequence_buffer+9
-              tjz vsync_sequence_buffer+10,#.sync_done
-              xcont vsync_sequence_buffer+10,vsync_sequence_buffer+11
-              tjz vsync_sequence_buffer+10,#.sync_done
-              xcont vsync_sequence_buffer+12,vsync_sequence_buffer+13
-              tjz vsync_sequence_buffer+14,#.sync_done
-              xcont vsync_sequence_buffer+14,vsync_sequence_buffer+15
-.sync_done
-
-              djnz tmp1,#.sync
-              cmps discrete_vsync,#0 wc
-        if_ae drvh discrete_vsync
-after_vsync
-              ' do back porch
-              mov tmp1,bp_lines
-.bp
-              call #do_hsync
-              call #blanking_vline_update
-              setq pixelnco_sync
-              xcont solid_command,blank_color
-              djnz tmp1,#.bp
-
-              neg virtual_line,#6 - VDPR_OFFSET
-              mov subline,#0
 
 
-              '' do top border
-              mov tmp1,#6
-              cmps line_multiplier,#1 wc  
-              testbn vdp_mode_fr,#1 orc' Interlace display flag
-              testb virtual_frame,#0 orc
-        if_nc add tmp1,#1
-        if_nc sub virtual_line,#1
-        if_nc add subline,halflines
-.top_brd_vline
-              call #do_hsync
-              wrlong virtual_line,linectr_ptr
-              setq pixelnco_sync
-              xcont solid_command,#$00_00_00_00
-              incmod subline,line_multiplier wc
-        if_nc jmp #.top_brd_vline
-              add virtual_line,#1
-              djnz tmp1,#.top_brd_vline
+init_rgbhv ' Separate H/V sync RGB (=VGA)
+              call #util_vgacommon
 
-              '' do active scan
-              add virtual_frame,#1
-              mov tmp1,#224
-              mov scanbuffer,scanbuffer_base
+              setcmod #%0_01_1_000_1 ' Normal mode + invert sync
+              mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+              call #util_setsyncs
+              call #util_setactive
+              
+              jmp #video_entry
 
-.active_vline
-              call #do_hsync
-              setq #1 ' also write virtual_frame
-              wrlong virtual_line,linectr_ptr
-              rdfast bit31,scanbuffer
-              rdlong vdp_mode ,vdpmode_ptr
+init_rgbs ' Combined sync RGB
+              setcmod #%0_01_1_000_1 ' Normal mode + invert sync
+              mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+              call #util_setsyncs
+              call #util_setactive
 
+              getbyte pa,vpins,#0 ' get analog pin base
+              call #util_hsyncpin
+              call #util_rgbpins
+              
+              jmp #video_entry
+
+
+init_soggy ' Sync-on-Green or YPbPr
+              setcmod #%0_01_1_010_0 ' Normal mode + DAC0 to green
+              mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+              call #util_setsyncs
+              call #util_setactive
+
+              getbyte pa,vpins,#0 ' get analog pin base
+              call #util_rgbpins
+              
+              jmp #video_entry
+
+init_composite
+            setcmod #%0_11_1_000_0 ' Composite mode
+
+            getbyte pa,vpins,#0 ' get analog pin base
+            ' just a single pin
+            call #util_sdtvpins
+
+            call #util_sdtvcommon
+            jmp #video_entry
+
+init_svideo
+            setcmod #%0_10_1_000_0 ' SVideo mode
+
+            getbyte pa,vpins,#0 ' get analog pin base
+            add pa,#0 addpins 1' two pins
+            call #util_sdtvpins
+
+            call #util_sdtvcommon
+            jmp #video_entry
+
+init_compsvid ' SVideo + Composite dual
+            setcmod #%0_10_1_000_0 ' SVideo mode
+
+            getbyte pa,vpins,#0 ' get analog pin base
+            add pa,#0 addpins 2 ' three pins
+            call #util_sdtvpins
+
+            call #util_sdtvcommon
+            jmp #video_entry
+
+
+init_dvivga ' DVI+VGA dual (DVI-I)
+            call #util_vgacommon ' then fall through
+init_dvi    ' Plain DVI-D
+            call #util_tmdscommon
+            jmp #video_entry
+
+init_hdmivga ' HDMI + VGA
+            call #util_vgacommon  ' then fall through
+init_hdmi    ' HDMI (=DVI + audio)
+
+            ' load the overlay
+            loc pa,#@hdmi_overlay
+            setq #495-video_ovl_area
+            rdlong video_ovl_area,pa
+
+            ' Set sync functions
+            mov hsync_func,#hsync_hdmi_previd
+            mov vbi_hsync_func,#hsync_hdmi_vbi
+            mov vsync_func,#vsync_hdmi
+
+            ' Setup the audio processing
+            mov audio_poll_func,#audio_poll_repo
+            setq #(audio_clear_end-audio_clear_start)-1
+            rdlong audio_clear_start,##$80000 ' read from unmapped memory to get zeroes
+
+
+            ' Audio packets will be sent at the end of HSync
+            ' and the remaining cycles will be the preamble
+            mov hsync_color,##TMDS_PREDAT_H ' Override the HSync color
+            mov hvsync_color,##TMDS_PREDAT_HV ' Override the HVSync color
+            sub hsync_tip,#64+4 ' 32 data, 2*2 guard
+
+            ' Set bpshort to accomodate guard band
+            mov hsync_bpshort,hsync_bp
+            sub hsync_bpshort,hsync_guardband
+            debug(udec(hsync_bp,hsync_bpshort,hsync_guardband))
+
+            mov blankline_packets,blankline
+            sub blankline_packets,#INFO_PACKETS*32+4 ' 32 per packet, 4 for the guard bands
+
+            ' Make sure all packets are consistently sloppy
+            setq #9-1
+            rdlong packet_header,##$80000 ' read from unmapped memory to get zeroes
+
+
+            ' Setup AVI InfoFrame
+            mov packet_header,##$0D_02_82 ' AVI InfoFrame version 2
+            ' only the first 4 bytes are really of interest
+            'setbyte packet_data0,#%0_00_0_00_01,#1 ' Byte 1: RGB, no active format, no bar data, overscan on
+            'setbyte packet_data0,#%10_00_1000,#2 ' Byte 2: Rec. 709 colors, no aspect info
+            'setbyte packet_data0,#%1_000_10_00,#3 ' Byte 3: IT content, Full RGB range, no non-uniform scaling
+            mov packet_data0,##%1_000_10_00___10_00_1000___0_00_0_00_01 << 8
+
+            call #util_infoframe_chksum
+
+            mov packet_extra,##$FE_FF_00 ' Will send this during VSync as first packet
+            loc ptrb,#\packet_aviinfo
+            call #terc_encode ' There shouldn't be a scanfunc set now
+            
+            ' Setup resampling rate
+            ' If it matches any standard rate we know then we disable resampling
+            rdlong temp2,#@clkfreq ' grab system clock
+            ' Check 32kHz
+            loc pa,#\32_000
+            call #util_check_sr_fuzzy
+      if_c  setnib spdif_status+0,#%0011,#6
+      if_c  jmp #.nctssetup
+            loc pa,#\44_100
+            call #util_check_sr_fuzzy
+      if_c  setnib spdif_status+0,#%0000,#6
+      if_c  jmp #.nctssetup
+            loc pa,#\48_000
+            call #util_check_sr_fuzzy ' gets 48k ideal period into temp1
+            setnib spdif_status+0,#%0010,#6 ' Always set 48k
+      if_c  jmp #.nctssetup
+
+            ' Ok, resample whatever it is to 48k
+            qdiv temp1,audio_period ' temp1 still has 48kHz period
+            getqx resample_ratio_int
+            getqy pa
+            qfrac pa,audio_period
+            getqx resample_ratio_frac
+            mov resample_antidrift_period,audio_period wc ' Always set NC
+            sub resample_antidrift_period,#1
+            mov resample_antidrift_phase,resample_antidrift_period ' Init to max value because DECMOD
+.nctssetup
+      if_c  mov temp1,audio_period ' If not resampling, use input rate
+
+            ' Disable de-jitter code if not resampling or fractional ratio >= 0.5
+            tjns resample_ratio_frac,#.no_djkill
+            tjnz resample_antidrift_period,#.no_djkill
+            mov build_audio:jptch1,#0 ' NOP
+            mov build_audio:jptch2,#0 ' NOP
+            debug("Disabled de-jitter!")
+.no_djkill
+
+            ' Setup audio clock packet
+            mov packet_header,#$00_00_00_01 ' Clock packet
+            debug(udec(temp1,temp2,audio_period))
+            mov temp3,##10000
+            mul temp3,temp1
+            shr temp3,#1 wc
+            add temp2,temp3
+            rcl temp3,#1
+            qdiv temp2,temp3 ' clkfreq/period (rounded)
+            getqx temp2 ' gives multiplier that shifts 1280/period into optimal range
+
+            mul temp1,temp2 ' CTS value
+            mov hdmi_regen_period,temp2
+            mul hdmi_regen_period,#10
+            mul temp2,##1280 ' N value
+            debug("N: ",udec_(temp2)," CTS: ",udec_(temp1))
+            debug(udec(hdmi_regen_period))
+
+            ' Pack them into the clown car, honk honk
+            setr temp3,#packet_data0
+            rep @.nctspck,#4
+            alti temp3,#%111_000_000
+            movbyts temp1,#%%0123
+            alti temp3,#%111_000_000
+            movbyts temp2,#%%3012
+.nctspck
+            mov packet_extra,##$FF_00_FF ' No start bit, hsync
+            loc ptrb,#\packet_aclk
+            call #terc_encode
+            setbyte packet_extra,#$FF,#1 ' VSync version
+            loc ptrb,#\packet_aclk_v
+            call #terc_encode
+
+
+
+            mov packet_extra,##$FE_00_FF ' Prepare for real-time audio (during HSync!)
+            
+            ' encode a null packet (DEBUG DEBUG?)
+            setq #9-1
+            rdlong packet_header,##$80000 ' read from unmapped memory to get zeroes
+            loc ptrb,#\packet_audio ' Where to store it
+            call #terc_encode
+
+            call #util_tmdscommon
+
+            mov scantask,##build_audio
+
+            jmp #video_entry
+
+
+util_check_sr_fuzzy
+'' Compute period of sample rate in PA into temp1 (using clkfreq in temp2)
+'' Set C if audio_period is close enough
+            mov pb,pa
+            shr pb,#1
+            add pb,temp2
+            qdiv pb,pa
+            getqx temp1
+            mov pb,temp1
+            sub pb,audio_period
+            abs pb
+      _ret_ cmp pb,#1 wc
+
+util_infoframe_chksum
+            setbyte packet_data0+0,#0,#0
+            setbyte packet_header+0,#0,#3
+            setbyte packet_data0+1,#0,#3
+            setbyte packet_data1+1,#0,#3
+            setbyte packet_data2+1,#0,#3
+            setbyte packet_data3+1,#0,#3
+
+            getbyte temp1,packet_header,#2 ' grab length
+            add temp1,#4-1
+            mov temp2,#0
+.chklp
+            altgb temp1,#packet_header
+            getbyte temp3
+            sub temp2,temp3
+            djnf temp1,#.chklp
+            debug("infoframe checksum ",uhex_(temp2))
+      _ret_ setbyte packet_data0,temp2,#0
+
+util_tmdscommon ' common TMDS TX setup
+            mov pa,#%10_01_1_000_1
+            testb vpins,#encod TMDS_REVERSE_FLAG wc
+            bitc pa,#7
+            setcmod pa
+            
+            getbyte pa,vpins,#1 ' get digital pin base
+            and pa,#%111000
+            add pa,#0 addpins 7
+            wrpin ##TMDS_DRIVE_MODE,pa
+            drvl pa
+
+            getbyte temp2,vpins,#1 ' get digital pin base
+            and temp2,#%111000
+
+            setd audio_poll_repo:pptchd,temp2
+            sets audio_poll_repo:pptchs,temp2
+            
+            shl temp2,#17
+            bith temp2,#encod X_PINS_ON
+
+            mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+            or pa,temp2
+            call #util_setsyncs
+            jmp #util_setactive_extra ' tail call
+
+
+util_vgacommon ' common RGBHV DAC setup
+            call #util_vsyncpin
+            getbyte pa,vpins,#0 ' get analog pin base
+            call #util_hsyncpin
+            jmp #util_rgbpins ' tail call
+
+
+
+util_rgbpins
+            add pa,#1 addpins 2 ' 3 pins, 1 up
+            cogid pb
+            shl pb,#8
+            or pb,##P_DAC_75R_2V|P_CHANNEL
+            wrpin pb,pa
+      _ret_ drvl pa
+
+util_sdtvpins
+util_hsyncpin
+            cogid pb
+            shl pb,#8
+            or pb,##P_DAC_124R_3V|P_CHANNEL ' Yes, 124R is correct, 75R can't hit bright yellow
+            wrpin pb,pa
+      _ret_ drvl pa
+
+util_vsyncpin
+            getbyte vsync_pin,extravpins,#0
+            wrpin #0,vsync_pin ' Should we give this a mode?
+      _ret_ drvl vsync_pin
+
+
+util_sdtvcommon
+              setcfrq burst_freq
+              mov hsync_bpshort,hsync_bp
+              sub hsync_bpshort,hsync_breeze
+              sub hsync_bpshort,hsync_burst
+              mov hsync_func,#hsync_ntsc
+              mov vbi_hsync_func,#hsync_ntsc
+
+              call #util_setactive
+              
+              mov pa,##X_DACS_3_2_1_0|X_IMM_1X32_4DAC8
+              ' fall through
+util_setsyncs
+              or hsync_breeze,pa
+              or hsync_burst,pa ' is also hsync_guardband
+              or hsync_bpshort,pa
+              or hsync_fp,pa
+              or hsync_tip,pa
+              or hsync_bp,pa
+              or bitbangcmd,pa
+              or packetblank,pa
+              or blankline_packets,pa
+        _ret_ or blankline,pa
+
+util_setactive ' set default active line handling
+              mov temp2,#0
+util_setactive_extra
+              mov pa,##X_DACS_3_2_1_0|X_IMM_1X32_4DAC8
+              or pa,temp2
+              or borderline,pa
               cmp extra_pillar,#0 wz
-        if_nz setq pixelnco_sync
-        if_nz xcont extra_pillar,#0
+        if_nz or extra_pillar,pa
+              or altres_pillar,pa
 
-              testb vdp_mode,#0 wc' H40 flag
-        if_c  call #vislineH40
-        if_nc call #vislineH32
+              tjz nco_main,#.softscan
+              cmp nco_alt,#0 wz
+        if_z  mov altline_func,##line_native_altpillar ' Use pillarboxing if no alt NCO set
 
-              cmp extra_pillar,#0 wz
-        if_nz setq pixelnco_sync
-        if_nz xcont extra_pillar,#0
+              mov pa,##X_DACS_3_2_1_0|X_RFLONG_RGB24
+              or pa,temp2
+              or linecmd,pa
+        _ret_ or linecmd_alt,pa
+.softscan
+              ' Use emulated pixel-doubling
+              or pixel_multiplier,pa
+              mov line_func,#line_scancomp
+        _ret_ mov altline_func,#line_scancomp
+'              mov line_func,#line_soft2x
+'        _ret_ mov altline_func,#line_soft2x_alt
 
-              incmod subline,line_multiplier wc
-        if_nc jmp #.active_vline
-              testb virtual_line,#0 wc
-              sumc scanbuffer,con_1280d
-              add virtual_line,#1
-              djnz tmp1,#.active_vline
-
-
-              '' do bottom border
-              mov tmp1,#10
-              cmps line_multiplier,#1 wc
-              testbn vdp_mode_fr,#1 orc' Interlace display flag
-              testbn virtual_frame,#0 orc
-        if_nc mov subline,line_multiplier
-        if_nc sub subline,halflines
-.bott_brd_vline
-              call #do_hsync
-              wrlong virtual_line,linectr_ptr
-              setq pixelnco_sync
-              xcont solid_command,#$00_00_00_00
-              incmod subline,line_multiplier wc
-        if_nc jmp #.bott_brd_vline
-              add virtual_line,#1
-              djnz tmp1,#.bott_brd_vline
-
-              jmp #do_frame
-
-
-vislineH40
-              tjz pixelnco_320,#vislineH40_hdmi
-              setq pixelnco_320
-        _ret_ xcont h40_command,#0
-vislineH32
-              tjz pixelnco_320,#vislineH32_hdmi
-              tjz pixelnco_256,#.pillarbox
-              setq pixelnco_256
-        _ret_ xcont h32_command,#0
-.pillarbox
-              setq pixelnco_320
-              xcont pillar_command,#0
-              xcont h32_command,#0
-        _ret_ xcont pillar_command,#0
-
-vislineH40_hdmi
-              testb cmod_val,#30 wc ' LCD?
-        if_c  jmp #.lcd
-              rep #3,#320
-              rflong pa
-              andn pa,#$FF
-              xcont hdmi_command,pa
-              ret  wcz
-
-.lcd
-              rep #4,#320
-              rflong pa
-              and pa,lcdmask
-              shr pa,#8
-              xcont lcd6_command,pa
-              ret  wcz
-
-vislineH32_hdmi
-              testb cmod_val,#30 wc ' LCD?
-        if_c  jmp #.lcd
-              xcont pillar_command,#0
-              xcont pillar_command,#0
-              rep #3,#256
-              rflong pa
-              andn pa,#$FF
-              xcont hdmi_command,pa
-              xcont pillar_command,#0
-              xcont pillar_command,#0
-              ret  wcz
-
-.lcd
-              rep #1,#3
-              xcont pillar_command,#0
-
-              rep #4,#256
-              rflong pa
-              and pa,lcdmask
-              shr pa,#8
-              xcont lcd6_command,pa
-
-              rep #1,#3
-              xcont pillar_command,#0
-
-              ret  wcz
-
-
-
-blanking_vline_update
-              incmod subline,line_multiplier wc
-        if_c  add virtual_line,#1
-              cmps virtual_line,##0-(6 - VDPR_OFFSET) wc
-        if_b  wrlong virtual_line,linectr_ptr
-              ret wcz
-
-do_hsync
-              setq pixelnco_sync
-              xzero hsync_sequence_buffer+0,hsync_sequence_buffer+1
-              jnxmt #$
-              xor cq_val,cq_alter_val
-              setcq cq_val
-              mov sync_alti,##((hsync_sequence_buffer+2)<<9)+(hsync_sequence_buffer+3)
-.sync_lp      alti sync_alti,#%000_100_100
-              xcont 0-0,0-0
-              add sync_alti,con_402h
-              alti sync_alti,#%000_100_000
-        _ret_ tjnz 0-0,#.sync_lp
-
-
-ntsc_vsync
-              testb vdp_mode_fr,#1 wc' Interlace display flag
-              testbn virtual_frame,#0 andc
-        if_c  xor cq_val,cq_alter_val
-        if_c  call #.halfpulse
-              neg tmp1,sync_lines
-
-.spl1
-              call #.shortpulse
-              djnz tmp1,#.spl1
-
-
-              neg tmp1,sync_lines
-.lpl
-              call #.longpulse
-              djnz tmp1,#.lpl
-
-
-              neg tmp1,sync_lines
-              testb vdp_mode_fr,#1 wc' Interlace display flag
-              testbn virtual_frame,#0 andc
-.spl2
-              call #.shortpulse
-              djnz tmp1,#.spl2
-        if_c  call #.halfblank
-              jmp #after_vsync
-
-.shortpulse
-              setq pixelnco_sync
-              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
-              xcont vsync_sequence_buffer+2,vsync_sequence_buffer+3
-              xor cq_val,cq_alter_val
-              setcq cq_val
-              call #blanking_vline_update
-              xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
-.halfpulse
-              setq pixelnco_sync
-              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
-              xcont vsync_sequence_buffer+2,vsync_sequence_buffer+3
-        _ret_ xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
-
-.halfblank
-              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
-              xcont vsync_sequence_buffer+6,vsync_sequence_buffer+7
-        _ret_ xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
-
-.longpulse
-              xcont vsync_sequence_buffer+8,vsync_sequence_buffer+9
-              xcont vsync_sequence_buffer+10,vsync_sequence_buffer+11
-              xor cq_val,cq_alter_val
-              setcq cq_val
-              call #blanking_vline_update
-              xcont vsync_sequence_buffer+12,vsync_sequence_buffer+13
-              xcont vsync_sequence_buffer+14,vsync_sequence_buffer+15
-              xcont vsync_sequence_buffer+8,vsync_sequence_buffer+9
-              xcont vsync_sequence_buffer+10,vsync_sequence_buffer+11
-              xcont vsync_sequence_buffer+12,vsync_sequence_buffer+13
-        _ret_ xcont vsync_sequence_buffer+14,vsync_sequence_buffer+15
-
-
-
-pillar_command long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 32
-h40_command    long X_DACS_3_2_1_0|X_RFLONG_RGB24 + 320
-h32_command    long X_DACS_3_2_1_0|X_RFLONG_RGB24 + 256
-hdmi_command   long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 2
-lcd6_command    long X_DACS_3_2_1_0|X_IMM_4X8_1DAC8 + 3
-con_402h long $402
-con_1280d long 1280
-bit31   long negx
-lcdmask long $FCFCFC00
-
-dotclk_pin long -1
-
-tmp1          res 1
-virtual_line  res 1
-virtual_frame res 1
-subline       res 1
-sync_alti     res 1
-scanbuffer    res 1
-vdp_mode      res 1
-vdp_mode_fr   res 1 ' copy of VDP mode only updated per frame
-halflines     res 1
-
-
-' Loaded from mode struct
-mode_start
-scanbuffer_base         res 1
-linectr_ptr             res 1
-vdpmode_ptr             res 1
-discrete_vsync          res 1
-
-line_multiplier         res 1
-fp_lines                res 1
-sync_lines              res 1
-bp_lines                res 1
-pixelnco_sync           res 1
-pixelnco_320            res 1
-pixelnco_256            res 1
-blank_color             res 1
-
-solid_command           res 1
-extra_pillar            res 1
-
-hsync_sequence_buffer   res 8*2
-vsync_sequence_buffer   res 8*2
-
-cmod_val                res 1
-cy_val                  res 1
-ci_val                  res 1
-cq_val                  res 1
-cq_alter_val            res 1
-cfrq_val                res 1
-mode_end
+init_ili9342 ' 6-bit digital LCD interface
+            ' TODO
+            jmp #$
 
 
 CON
@@ -1001,6 +1634,13 @@ PRI computeClockMode(desiredHz) : mode | vco, finput, f, p, div, m, error, bestE
         else
             mode |= %0111 ' don't enable oscillator
 
+CON ' Clocky business
+
+    MASTER_CLK = 3_579_545*15
+    CLK_MULTIPLIER = 6
+    VIDEO_CLKFREQ = MASTER_CLK*CLK_MULTIPLIER
+
+
 CON  ' CSC constant calculation
 
     ONE_IRE = 255.0 / 180.0
@@ -1035,35 +1675,53 @@ CON  ' CSC constant calculation
     'COLOR_BURST_NTSC = $B9FF00_01
 
 
-    CY_COMP_SDTV  = ( 27&$FF) << 24 + ( 53&$FF) << 16 + ( 10&$FF) << 8 + BLANK_LEVEL
-    CPB_COMP_SDTV = (-15&$FF) << 24 + (-30&$FF) << 16 + ( 45&$FF) << 8 + 128
-    CPR_COMP_SDTV = ( 45&$FF) << 24 + (-38&$FF) << 16 + ( -7&$FF) << 8 + 128
 
     Y_BLANK = 0
     Y_SYNC = 256-BLANK_LEVEL
 
+CON  ' TMDS definitions
+    TMDS_CONTROL_00 = %1101010100
+    TMDS_CONTROL_01 = %0010101011
+    TMDS_CONTROL_10 = %0101010100
+    TMDS_CONTROL_11 = %1010101011
 
-        HDMI_BLANK  = %1101010100_1101010100_1101010100_10
-        HDMI_HSYNC  = %1101010100_1101010100_0010101011_10
-        HDMI_VSYNC  = %0101010100_0101010100_0101010100_10
-        HDMI_HVSYNC = %0101010100_0101010100_1010101011_10
+    TMDS_BLANK       = TMDS_CONTROL_00<<22 + TMDS_CONTROL_00<<12 + TMDS_CONTROL_00<<2 + %10
+    TMDS_HSYNC       = TMDS_CONTROL_00<<22 + TMDS_CONTROL_00<<12 + TMDS_CONTROL_01<<2 + %11
+    TMDS_VSYNC       = TMDS_CONTROL_00<<22 + TMDS_CONTROL_00<<12 + TMDS_CONTROL_10<<2 + %10
+    TMDS_HVSYNC      = TMDS_CONTROL_00<<22 + TMDS_CONTROL_00<<12 + TMDS_CONTROL_11<<2 + %11
+  
+    TMDS_PREVID      = TMDS_CONTROL_00<<22 + TMDS_CONTROL_01<<12 + TMDS_CONTROL_00<<2 + %10 ' Video preamble (should never have H/V sync)
+    TMDS_GUARDVID    = %1011001100_0100110011_1011001100_10 ' Video Guard character
+  
+    TMDS_PREDAT_B    = TMDS_CONTROL_01<<22 + TMDS_CONTROL_01<<12 + TMDS_CONTROL_00<<2 + %10 ' Data preamble in blanking
+    TMDS_PREDAT_H    = TMDS_CONTROL_01<<22 + TMDS_CONTROL_01<<12 + TMDS_CONTROL_01<<2 + %11 ' Data preamble in HSync
+    TMDS_PREDAT_V    = TMDS_CONTROL_01<<22 + TMDS_CONTROL_01<<12 + TMDS_CONTROL_10<<2 + %10 ' Data preamble in VSync
+    TMDS_PREDAT_HV   = TMDS_CONTROL_01<<22 + TMDS_CONTROL_01<<12 + TMDS_CONTROL_11<<2 + %11 ' Data preamble in HSync+VSync
 
-PRI ili_sendcmd(pins,cmd,parct,par)
-  pinl(pins.byte[1]) ' CS low
-  ili_sendbyte(pins,cmd,true)
-  repeat parct
-    ili_sendbyte(pins,par,false)
-    par >>= 8
-  pinh(pins.byte[1]) ' CS high
-  pinf(pins.byte[3]) ' float SDA
+    TMDS_GUARDDAT_B  = %0100110011_0100110011<<12 + TERC_C<<2 + %10 ' Data Guard character in blanking
+    TMDS_GUARDDAT_H  = %0100110011_0100110011<<12 + TERC_D<<2 + %11 ' Data Guard character in HSync
+    TMDS_GUARDDAT_V  = %0100110011_0100110011<<12 + TERC_E<<2 + %10 ' Data Guard character in VSync
+    TMDS_GUARDDAT_HV = %0100110011_0100110011<<12 + TERC_F<<2 + %11 ' Data Guard character in HSync+VSync
 
-PRI ili_sendbyte(pins,v,cmdflag)
-  v rev= 8
-  v.[0] := not cmdflag
-  repeat 9
-    pinw(pins.byte[3],v)
-    v>>=1
-    waitus(1)
-    pinh(pins.byte[2])
-    waitus(1)
-    pinl(pins.byte[2]) 
+    TERC_0 = %1010011100
+    TERC_1 = %1001100011
+    TERC_2 = %1011100100
+    TERC_3 = %1011100010
+    TERC_4 = %0101110001
+    TERC_5 = %0100011110
+    TERC_6 = %0110001110
+    TERC_7 = %0100111100
+    TERC_8 = %1011001100
+    TERC_9 = %0100111001
+    TERC_A = %0110011100
+    TERC_B = %1011000110
+    TERC_C = %1010001110
+    TERC_D = %1001110001
+    TERC_E = %0101100011
+    TERC_F = %1011000011
+
+    TMDS_DRIVE_MODE = P_REPOSITORY|P_OE|P_LOW_FAST|P_HIGH_1K5
+    'TMDS_DRIVE_MODE = P_DAC_124R_3V|P_BITDAC|($F7)<<8
+
+    PACKET_CRC = $83 ' Error-correcting polynomial for HDMI auxillary data
+    INFO_PACKETS = 1 ' How many once-per-frame info packets

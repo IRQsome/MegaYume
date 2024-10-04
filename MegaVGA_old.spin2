@@ -1,0 +1,1069 @@
+CON
+
+  #0, MODE_VGA2X, MODE_VGA3X, MODE_VGA4X, MODE_VGA5X, MODE_COMPOSITE, MODE_SVIDEO, MODE_SVID_AND_COMP, MODE_HDMI, MODE_YPBPR, MODE_LCD6
+  #0, SUBMODE_NTSC, SUBMODE_PAL60
+
+  #0, LCD_ILI9342
+
+  ' MADCTL values for ILI submode
+  ILI_HFLIP = %00000100 << 8 ' Doesn't work in bypass mode
+  ILI_VFLIP = %00010000 << 8
+  ILI_BGR   = %00001000 << 8 ' Toggle this if colors are wrong
+
+  CONFIG_SIZE = 64 ' TODO: change to actual size
+
+
+
+PUB start(lcptr,emptr,vbptr,mode,basepin,discrete_sync,submode) | i,tmp,lcdpins,cogn,modeptr,modebuf[4+CONFIG_SIZE]
+'' Note: discrete_vsync should be -1 for modes that don't need it. In HDMI mode, it indicates reverse mode
+'' In LCD_ILI9342 mode, the four bytes encode various pins:
+''  discrete_sync.byte[0] -> DOTCLK
+''  discrete_sync.byte[1] -> CS (for serial I/F)
+''  discrete_sync.byte[2] -> CLK (for serial I/F)
+''  discrete_sync.byte[3] -> SDA (for serial I/F)
+
+
+case mode
+  MODE_VGA2X:
+    modeptr := @vga2x_config
+  MODE_VGA3X:
+    modeptr := @vga3x_config
+  MODE_VGA4X:
+    modeptr := @vga4x_config
+  MODE_VGA5X:
+    modeptr := @vga5x_config
+  MODE_COMPOSITE,MODE_SVIDEO,MODE_SVID_AND_COMP:
+    case submode
+      SUBMODE_NTSC:  modeptr := @ntsc_config
+      SUBMODE_PAL60: modeptr := @pal60_config
+    discrete_sync := -1
+  MODE_YPBPR:
+    modeptr := @ypbpr_config
+    discrete_sync := -1
+  MODE_HDMI:
+    modeptr := @hdmi_wide_config
+  MODE_LCD6:
+    modeptr := @lcd6_config
+  other: abort -1
+
+clkset(computeClockMode(long[modeptr]),long[modeptr])
+longmove(@modebuf+16,modeptr+4,CONFIG_SIZE)
+case mode
+  MODE_COMPOSITE:
+    modebuf[46] |= %0_01_0_000_0 ' CMOD offset !!!!
+  MODE_HDMI:
+    if discrete_sync&1 ' Reverse mode
+      modebuf[46] |= 1<<7 ' CMOD offset !!!!
+    discrete_sync:=basepin&%111_000 ' Recycle this long to pass basepin into driver
+  MODE_LCD6:
+    lcdpins := discrete_sync
+    tmp := modebuf[51]' CFRQ offset !!!! (contains clock divider)
+    wrpin(basepin addpins 7,P_SYNC_IO)
+    pinf(lcdpins.byte[0])
+    wrpin(lcdpins.byte[0],P_OE|P_PULSE|P_SYNC_IO)
+    wxpin(lcdpins.byte[0],tmp + (tmp>>1)<<16)
+
+    case submode.byte[0]
+      LCD_ILI9342:
+        pinh(lcdpins.byte[1]) ' CS high
+        pinl(lcdpins.byte[2]) ' CLK low
+        pinf(lcdpins.byte[3]) ' float SDA
+        waitms(5)
+        ili_sendcmd(lcdpins,$01,0,0) ' Sleep out
+        waitms(5)
+        ili_sendcmd(lcdpins,$11,0,0) ' Soft reset
+        waitms(5)
+        ili_sendcmd(lcdpins,$29,0,0) ' Display ON
+        ili_sendcmd(lcdpins,$C8,3,$42_93_FF) ' Set EXTC (magic number?)
+        ili_sendcmd(lcdpins,$36,1,submode.byte[1]) ' Set MADCTL (user supplied)
+        ili_sendcmd(lcdpins,$B0,1,$6C) ' Set IFMODE (RGB, no DE pin, bypass memory, positive sync)
+        ' Pull timings out of mode
+        tmp := modebuf[5] ' VFP
+        tmp.byte[1] := modebuf[6] + modebuf[7] ' VBP
+        tmp.byte[2] := (modebuf[14]&$ffff) ' HFP
+        tmp.byte[3] := (modebuf[16]&$ffff)+(modebuf[18]&$ffff) ' HBP
+        'tmp := $38_05_02_02
+        ili_sendcmd(lcdpins,$B5,4,tmp)
+        ili_sendcmd(lcdpins,$26,1,$04) ' Set gamma to 2.5
+      other: abort -2
+    discrete_sync:=(basepin&%111_000) + (discrete_sync.byte[0]<<8)  ' Recycle this long to pass basepin/dotclk into driver
+
+
+modebuf[0] := vbptr
+modebuf[1] := lcptr
+modebuf[2] := emptr
+modebuf[3] := discrete_sync
+
+
+cogn := coginit(COGEXEC_NEW,@entry,@modebuf)
+if cogn < 0
+  abort cogn
+
+case mode
+  MODE_VGA2X,MODE_VGA3X,MODE_VGA4X,MODE_VGA5X:
+    wrpin(basepin+0,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
+    wrpin((basepin+1) addpins 2,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
+    wrpin(discrete_sync,P_DAC_124R_3V|P_BITDAC|($F0<<8))
+    pinl(basepin addpins 3)
+  MODE_COMPOSITE:
+    wrpin(basepin,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
+    pinl(basepin)
+  MODE_SVIDEO:
+    wrpin(basepin addpins 1,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
+    pinl(basepin addpins 1)
+  MODE_SVID_AND_COMP:
+    wrpin(basepin addpins 2,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
+    pinl(basepin addpins 2)
+  MODE_YPBPR:
+    wrpin((basepin+1) addpins 2,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
+    pinl((basepin+1) addpins 2)
+  MODE_HDMI:
+    wrpin(basepin addpins 7,P_DAC_124R_3V|P_BITDAC|($F7<<8))
+    'wrpin(basepin addpins 7,P_LOW_1K5|P_HIGH_1K5)
+  MODE_LCD6:
+    waitms(1)
+    ili_sendcmd(lcdpins,$F6,3,$07_00_00) ' Set IFCTL (6 bit mode, enable ext. clock)
+
+waitms(1) ' wait for cog to have booted for sure before invalidating stack frame
+
+
+CON
+
+'' VDP vertical timing (well, conjecture about it, anyways):
+'' 6 background color lines
+'' 224 active lines (starts line 0 as per Vcounter)
+'' 10 background color lines
+'' 22 blank/sync lines
+
+VDPR_OFFSET = 2 ' lines that rendering has to run ahead
+
+
+DAT
+
+'' LCD 320x240 mode
+lcd6_config
+long 53_693_175*6
+' Timing
+long    1 - 1 ' line multiplier minus one
+long    3 ' native front porch lines
+long    9 ' native sync lines
+long    10 ' native back porch lines
+long    $08000000 ' Sync NCO value
+long    0 ' H40 NCO value
+long    0 ' H32 NCO value
+long    0 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (320*3) ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (25*3), %00 ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (15*3), %01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (67*3), %00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (25*3), %10 ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + (15*3), %11 ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + ((67+320)*3), %10 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    negx + (1<<30)' CMOD mode + flags
+long    0 ' CY
+long    0 ' CI
+long    0 ' CQ
+long    0 ' CQ XORlternate value
+long    16 ' dot clock divider
+
+'' HDMI 800x480 mode
+hdmi_wide_config
+long 327_500_000
+' Timing
+long    2 - 1 ' line multiplier minus one
+long    10 ' native front porch lines
+long    2 ' native sync lines
+long    33 ' native back porch lines
+long    $0CCCCCCD ' Sync NCO value
+long    0 ' H40 NCO value
+long    0 ' H32 NCO value
+long    HDMI_BLANK ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 800 ' blank line
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 56, HDMI_BLANK ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96, HDMI_HSYNC ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96, HDMI_BLANK ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 56, HDMI_VSYNC ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96, HDMI_HVSYNC ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 96 + 800,HDMI_VSYNC ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    %10_0000000 + negx' CMOD mode + flags
+long    0 ' CY
+long    0 ' CI
+long    0 ' CQ
+long    0 ' CQ XORlternate value
+long    0 ' CFRQ
+
+
+'' VGA mode (using 13x clock multiplier -> 327_600_000 MHz)
+vga2x_config
+long 327_600_000
+' Timing
+long    2 - 1 ' line multiplier minus one
+long    10 ' native front porch lines
+long    2 ' native sync lines
+long    33 ' native back porch lines
+long    round(2147483648.0/13.0/2.0) ' Sync NCO value
+long    round(2147483648.0/13.0/2.0) ' H40 NCO value
+long    round(2147483648.0/13.0/2.0*256.0/320.0) ' H32 NCO value
+long    %00 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    %0_01_1_000_1 ' CMOD mode + flags
+long    $5A_00_00_00 ' CY
+long    $00_5A_00_00 ' CI
+long    $00_00_5A_00 ' CQ
+long    $00_00_00_00 ' CQ XORlternate value
+long    0 ' CFRQ
+
+'' 720P mode - slightly nonstandard timing, (more like 3x240p than real 720p -> more blanking)
+'' Perhaps better values can be found
+vga3x_config
+long 327_600_000
+' Timing
+long    3 - 1 ' line multiplier minus one
+long    15 ' native front porch lines
+long    3 ' native sync lines
+long    48 ' native back porch lines
+long    round(2147483648.0/13.0/2.0*1.5) ' Sync NCO value
+long    round(2147483648.0/13.0/2.0*1.5) ' H40 NCO value
+long    round(2147483648.0/13.0/2.0*1.5*256.0/320.0) ' H32 NCO value
+long    %00 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    %0_01_1_000_1 ' CMOD mode + flags
+long    $5A_00_00_00 ' CY
+long    $00_5A_00_00 ' CI
+long    $00_00_5A_00 ' CQ
+long    $00_00_00_00 ' CQ XORlternate value
+long    0 ' CFRQ
+
+
+
+'' "double VGA" mode - like VGA mode, but linedoubled again - should give great results for H32 in particular
+'' TODO: Test on monitor that can handle it
+vga4x_config
+long 327_600_000
+' Timing
+long    4 - 1 ' line multiplier minus one
+long    10*2 ' native front porch lines
+long    2*2 ' native sync lines
+long    33*2 ' native back porch lines
+long    round(2147483648.0/13.0) ' Sync NCO value
+long    round(2147483648.0/13.0) ' H40 NCO value
+long    round(2147483648.0/13.0*256.0/320.0) ' H32 NCO value
+long    %00 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    %0_01_1_000_1 ' CMOD mode + flags
+long    $5A_00_00_00 ' CY
+long    $00_5A_00_00 ' CI
+long    $00_00_5A_00 ' CQ
+long    $00_00_00_00 ' CQ XORlternate value
+long    0 ' CFRQ
+
+vga5x_config
+long 327_600_000
+' Timing
+long    5 - 1 ' line multiplier minus one
+long    10*3 ' native front porch lines
+long    2*3 ' native sync lines
+long    33*3 ' native back porch lines
+long    round(2147483648.0/13.0*1.2) ' Sync NCO value
+long    round(2147483648.0/13.0*1.2) ' H40 NCO value
+long    round(2147483648.0/13.0*1.2*256.0/320.0) ' H32 NCO value
+long    %00 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    %0_01_1_000_1 ' CMOD mode + flags
+long    $5A_00_00_00 ' CY
+long    $00_5A_00_00 ' CI
+long    $00_00_5A_00 ' CQ
+long    $00_00_00_00 ' CQ XORlternate value
+long    0 ' CFRQ
+
+ntsc_config
+long 53_693_175*6
+' Timing
+long    1 - 1 ' line multiplier minus one
+long    1 ' native front porch lines
+long    -3 ' native sync lines (x3 because NTSC serration)
+long    12 ' native back porch lines
+long    round(2147483648.0/48.0)*4 ' Sync NCO value
+long    round(2147483648.0/48.0) ' H40 NCO value
+long    round(2147483648.0/48.0*256.0/320.0) ' H32 NCO value
+long    %01 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320*4 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 14,$01 ' HSync section 3 (breezeway)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80,COLOR_BURST_NTSC ' HSync section 4 (color burst)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 206 - 94,$01 ' HSync section 5 (back porch)
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 2 (short pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 631,$01 ' VSync section 3 (back porch + active)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$01 ' VSync section 4 (short pulse except not)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 5 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 6 (shot pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 675-108,$03 ' VSync section 7 (pulse extension)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64,$01 ' VSync section 8 (back porch + active)
+
+' Color conversion
+long    %0_10_1_000_0 ' CMOD mode + flags
+long    CY_NTSC ' CY
+long    CI_NTSC ' CI
+long    CQ_NTSC ' CQ
+long    0       ' CQ XORlternate value
+long    $2D82D83 ' CFRQ
+
+
+pal60_config
+long 53_693_175*6
+' Timing
+long    1 - 1 ' line multiplier minus one
+long    1 ' native front porch lines
+long    -3 ' native sync lines (x3 because NTSC serration)
+long    12 ' native back porch lines
+long    round(2147483648.0/48.0)*4 ' Sync NCO value
+long    round(2147483648.0/48.0) ' H40 NCO value
+long    round(2147483648.0/48.0*256.0/320.0) ' H32 NCO value
+long    %01 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320*4 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 14,$01 ' HSync section 3 (breezeway)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80,COLOR_BURST_PAL ' HSync section 4 (color burst)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 206 - 94,$01 ' HSync section 5 (back porch)
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 2 (short pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 631,$01 ' VSync section 3 (back porch + active)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$01 ' VSync section 4 (short pulse except not)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,$01 ' VSync section 5 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,$03 ' VSync section 6 (shot pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 675-108,$03 ' VSync section 7 (pulse extension)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64,$01 ' VSync section 8 (back porch + active)
+
+' Color conversion
+long    %0_10_1_000_0 ' CMOD mode + flags
+long    CY_PAL ' CY
+long    CU_PAL ' CI
+long    CV_PAL_EVEN ' CQ
+long    CV_PAL_ODD^CV_PAL_EVEN ' CQ XORlternate value
+long    round((1.0/90.0 * 4_294_967_296.0)/3_579_545.0*4_433_618.75) ' CFRQ
+
+
+ypbpr_config
+long 53_693_175*6
+' Timing
+long    1 - 1 ' line multiplier minus one
+long    1 ' native front porch lines
+long    -3 ' native sync lines (x3 because NTSC serration)
+long    12 ' native back porch lines
+long    round(2147483648.0/48.0)*4 ' Sync NCO value
+long    round(2147483648.0/48.0) ' H40 NCO value
+long    round(2147483648.0/48.0*256.0/320.0) ' H32 NCO value
+long    Y_BLANK ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320*4 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,Y_BLANK ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_SYNC ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 14,Y_BLANK ' HSync section 3 (breezeway)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 80,Y_BLANK ' HSync section 4 (color burst)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 206 - 94,Y_BLANK ' HSync section 5 (back porch)
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,Y_BLANK ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_SYNC ' VSync section 2 (short pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 631,Y_BLANK ' VSync section 3 (back porch + active)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_BLANK ' VSync section 4 (short pulse except not)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 116,Y_BLANK ' VSync section 5 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 108,Y_SYNC ' VSync section 6 (shot pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 675-108+32,Y_SYNC ' VSync section 7 (pulse extension)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 64-32,Y_BLANK ' VSync section 8 (back porch + active)
+
+' Color conversion
+long    %0_01_1_010_0 ' CMOD mode + flags
+long    CPR_COMP_SDTV ' CY
+long    CY_COMP_SDTV ' CI
+long    CPB_COMP_SDTV ' CQ
+long    0       ' CQ XORlternate value
+long    0 ' CFRQ
+
+DAT
+              org
+entry
+              setq #mode_end-mode_start-1
+              rdlong scanbuffer_base,ptra
+
+              mov virtual_frame,#0
+              mov halflines,line_multiplier
+              add halflines,#1
+              shr halflines,#1
+
+              testb cmod_val,#30 wc ' Have dotclk
+        if_c  getbyte dotclk_pin,discrete_vsync,#1
+
+              testb cmod_val,#31 wc ' Check pin mode?
+        if_nc jmp #.dacmode ' no
+
+              getbyte tmp1,discrete_vsync,#0
+
+              setq #7
+              drvl tmp1 ' Enable pins
+
+              ' Patch pins into commands
+              shl tmp1,#17
+              bith tmp1,#encod X_PINS_ON
+              or solid_command,tmp1
+              or pillar_command,tmp1
+              or h40_command,tmp1
+              or h32_command,tmp1
+              or hdmi_command,tmp1
+              or lcd6_command,tmp1
+              cmp extra_pillar,#0 wz
+        if_nz or extra_pillar,tmp1
+
+              setd sync_alti,#hsync_sequence_buffer
+              rep @.patch_sequences,#8+8
+
+              alti sync_alti,#%000_100_000
+              cmp 0-0,#0 wz
+        if_nz alti sync_alti,#%000_100_000
+        if_nz or 0-0,tmp1
+              add sync_alti,con_402h
+.patch_sequences
+
+              neg discrete_vsync,#1
+
+.dacmode
+              ' setup CSC
+              setcmod cmod_val
+              setcy cy_val
+              setci ci_val
+              setcq cq_val
+              setcfrq cfrq_val
+
+
+              setxfrq pixelnco_sync
+              cmps dotclk_pin,#0 wc
+        if_ae drvl dotclk_pin
+              xinit solid_command,#0
+
+do_frame
+
+              cmps dotclk_pin,#0 wc
+        if_ae wypin bit31,dotclk_pin
+{
+              mov tmp1,##525
+.tstvis
+              cmp tmp1,#2 wc
+              drvnc discrete_vsync
+              call #black_line
+              djnz tmp1,#.tstvis
+              jmp #do_frame
+}
+
+              '' Do blanking/sync
+              neg virtual_line,#28+1-VDPR_OFFSET
+              mov subline,line_multiplier
+              ' do front porch
+              mov tmp1,fp_lines
+.fp
+              call #do_hsync
+              call #blanking_vline_update
+              setq pixelnco_sync
+              xcont solid_command,blank_color
+              djnz tmp1,#.fp
+              ' do Vsync
+              rdlong vdp_mode,vdpmode_ptr
+              mov vdp_mode_fr,vdp_mode
+              mov tmp1,sync_lines wc
+        if_c  jmp #ntsc_vsync
+              cmps discrete_vsync,#0 wc
+        if_ae drvl discrete_vsync
+.sync
+              setq pixelnco_sync
+              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
+              xcont vsync_sequence_buffer+2,vsync_sequence_buffer+3
+              call #blanking_vline_update
+              xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
+              tjz vsync_sequence_buffer+6,#.sync_done
+              xcont vsync_sequence_buffer+6,vsync_sequence_buffer+7
+              tjz vsync_sequence_buffer+8,#.sync_done
+              xcont vsync_sequence_buffer+8,vsync_sequence_buffer+9
+              tjz vsync_sequence_buffer+10,#.sync_done
+              xcont vsync_sequence_buffer+10,vsync_sequence_buffer+11
+              tjz vsync_sequence_buffer+10,#.sync_done
+              xcont vsync_sequence_buffer+12,vsync_sequence_buffer+13
+              tjz vsync_sequence_buffer+14,#.sync_done
+              xcont vsync_sequence_buffer+14,vsync_sequence_buffer+15
+.sync_done
+
+              djnz tmp1,#.sync
+              cmps discrete_vsync,#0 wc
+        if_ae drvh discrete_vsync
+after_vsync
+              ' do back porch
+              mov tmp1,bp_lines
+.bp
+              call #do_hsync
+              call #blanking_vline_update
+              setq pixelnco_sync
+              xcont solid_command,blank_color
+              djnz tmp1,#.bp
+
+              neg virtual_line,#6 - VDPR_OFFSET
+              mov subline,#0
+
+
+              '' do top border
+              mov tmp1,#6
+              cmps line_multiplier,#1 wc  
+              testbn vdp_mode_fr,#1 orc' Interlace display flag
+              testb virtual_frame,#0 orc
+        if_nc add tmp1,#1
+        if_nc sub virtual_line,#1
+        if_nc add subline,halflines
+.top_brd_vline
+              call #do_hsync
+              wrlong virtual_line,linectr_ptr
+              setq pixelnco_sync
+              xcont solid_command,#$00_00_00_00
+              incmod subline,line_multiplier wc
+        if_nc jmp #.top_brd_vline
+              add virtual_line,#1
+              djnz tmp1,#.top_brd_vline
+
+              '' do active scan
+              add virtual_frame,#1
+              mov tmp1,#224
+              mov scanbuffer,scanbuffer_base
+
+.active_vline
+              call #do_hsync
+              setq #1 ' also write virtual_frame
+              wrlong virtual_line,linectr_ptr
+              rdfast bit31,scanbuffer
+              rdlong vdp_mode ,vdpmode_ptr
+
+              cmp extra_pillar,#0 wz
+        if_nz setq pixelnco_sync
+        if_nz xcont extra_pillar,#0
+
+              testb vdp_mode,#0 wc' H40 flag
+        if_c  call #vislineH40
+        if_nc call #vislineH32
+
+              cmp extra_pillar,#0 wz
+        if_nz setq pixelnco_sync
+        if_nz xcont extra_pillar,#0
+
+              incmod subline,line_multiplier wc
+        if_nc jmp #.active_vline
+              testb virtual_line,#0 wc
+              sumc scanbuffer,con_1280d
+              add virtual_line,#1
+              djnz tmp1,#.active_vline
+
+
+              '' do bottom border
+              mov tmp1,#10
+              cmps line_multiplier,#1 wc
+              testbn vdp_mode_fr,#1 orc' Interlace display flag
+              testbn virtual_frame,#0 orc
+        if_nc mov subline,line_multiplier
+        if_nc sub subline,halflines
+.bott_brd_vline
+              call #do_hsync
+              wrlong virtual_line,linectr_ptr
+              setq pixelnco_sync
+              xcont solid_command,#$00_00_00_00
+              incmod subline,line_multiplier wc
+        if_nc jmp #.bott_brd_vline
+              add virtual_line,#1
+              djnz tmp1,#.bott_brd_vline
+
+              jmp #do_frame
+
+
+vislineH40
+              tjz pixelnco_320,#vislineH40_hdmi
+              setq pixelnco_320
+        _ret_ xcont h40_command,#0
+vislineH32
+              tjz pixelnco_320,#vislineH32_hdmi
+              tjz pixelnco_256,#.pillarbox
+              setq pixelnco_256
+        _ret_ xcont h32_command,#0
+.pillarbox
+              setq pixelnco_320
+              xcont pillar_command,#0
+              xcont h32_command,#0
+        _ret_ xcont pillar_command,#0
+
+vislineH40_hdmi
+              testb cmod_val,#30 wc ' LCD?
+        if_c  jmp #.lcd
+              rep #3,#320
+              rflong pa
+              andn pa,#$FF
+              xcont hdmi_command,pa
+              ret  wcz
+
+.lcd
+              rep #4,#320
+              rflong pa
+              and pa,lcdmask
+              shr pa,#8
+              xcont lcd6_command,pa
+              ret  wcz
+
+vislineH32_hdmi
+              testb cmod_val,#30 wc ' LCD?
+        if_c  jmp #.lcd
+              xcont pillar_command,#0
+              xcont pillar_command,#0
+              rep #3,#256
+              rflong pa
+              andn pa,#$FF
+              xcont hdmi_command,pa
+              xcont pillar_command,#0
+              xcont pillar_command,#0
+              ret  wcz
+
+.lcd
+              rep #1,#3
+              xcont pillar_command,#0
+
+              rep #4,#256
+              rflong pa
+              and pa,lcdmask
+              shr pa,#8
+              xcont lcd6_command,pa
+
+              rep #1,#3
+              xcont pillar_command,#0
+
+              ret  wcz
+
+
+
+blanking_vline_update
+              incmod subline,line_multiplier wc
+        if_c  add virtual_line,#1
+              cmps virtual_line,##0-(6 - VDPR_OFFSET) wc
+        if_b  wrlong virtual_line,linectr_ptr
+              ret wcz
+
+do_hsync
+              setq pixelnco_sync
+              xzero hsync_sequence_buffer+0,hsync_sequence_buffer+1
+              jnxmt #$
+              xor cq_val,cq_alter_val
+              setcq cq_val
+              mov sync_alti,##((hsync_sequence_buffer+2)<<9)+(hsync_sequence_buffer+3)
+.sync_lp      alti sync_alti,#%000_100_100
+              xcont 0-0,0-0
+              add sync_alti,con_402h
+              alti sync_alti,#%000_100_000
+        _ret_ tjnz 0-0,#.sync_lp
+
+
+ntsc_vsync
+              testb vdp_mode_fr,#1 wc' Interlace display flag
+              testbn virtual_frame,#0 andc
+        if_c  xor cq_val,cq_alter_val
+        if_c  call #.halfpulse
+              neg tmp1,sync_lines
+
+.spl1
+              call #.shortpulse
+              djnz tmp1,#.spl1
+
+
+              neg tmp1,sync_lines
+.lpl
+              call #.longpulse
+              djnz tmp1,#.lpl
+
+
+              neg tmp1,sync_lines
+              testb vdp_mode_fr,#1 wc' Interlace display flag
+              testbn virtual_frame,#0 andc
+.spl2
+              call #.shortpulse
+              djnz tmp1,#.spl2
+        if_c  call #.halfblank
+              jmp #after_vsync
+
+.shortpulse
+              setq pixelnco_sync
+              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
+              xcont vsync_sequence_buffer+2,vsync_sequence_buffer+3
+              xor cq_val,cq_alter_val
+              setcq cq_val
+              call #blanking_vline_update
+              xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
+.halfpulse
+              setq pixelnco_sync
+              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
+              xcont vsync_sequence_buffer+2,vsync_sequence_buffer+3
+        _ret_ xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
+
+.halfblank
+              xcont vsync_sequence_buffer+0,vsync_sequence_buffer+1
+              xcont vsync_sequence_buffer+6,vsync_sequence_buffer+7
+        _ret_ xcont vsync_sequence_buffer+4,vsync_sequence_buffer+5
+
+.longpulse
+              xcont vsync_sequence_buffer+8,vsync_sequence_buffer+9
+              xcont vsync_sequence_buffer+10,vsync_sequence_buffer+11
+              xor cq_val,cq_alter_val
+              setcq cq_val
+              call #blanking_vline_update
+              xcont vsync_sequence_buffer+12,vsync_sequence_buffer+13
+              xcont vsync_sequence_buffer+14,vsync_sequence_buffer+15
+              xcont vsync_sequence_buffer+8,vsync_sequence_buffer+9
+              xcont vsync_sequence_buffer+10,vsync_sequence_buffer+11
+              xcont vsync_sequence_buffer+12,vsync_sequence_buffer+13
+        _ret_ xcont vsync_sequence_buffer+14,vsync_sequence_buffer+15
+
+
+
+pillar_command long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 32
+h40_command    long X_DACS_3_2_1_0|X_RFLONG_RGB24 + 320
+h32_command    long X_DACS_3_2_1_0|X_RFLONG_RGB24 + 256
+hdmi_command   long X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 2
+lcd6_command    long X_DACS_3_2_1_0|X_IMM_4X8_1DAC8 + 3
+con_402h long $402
+con_1280d long 1280
+bit31   long negx
+lcdmask long $FCFCFC00
+
+dotclk_pin long -1
+
+tmp1          res 1
+virtual_line  res 1
+virtual_frame res 1
+subline       res 1
+sync_alti     res 1
+scanbuffer    res 1
+vdp_mode      res 1
+vdp_mode_fr   res 1 ' copy of VDP mode only updated per frame
+halflines     res 1
+
+
+' Loaded from mode struct
+mode_start
+scanbuffer_base         res 1
+linectr_ptr             res 1
+vdpmode_ptr             res 1
+discrete_vsync          res 1
+
+line_multiplier         res 1
+fp_lines                res 1
+sync_lines              res 1
+bp_lines                res 1
+pixelnco_sync           res 1
+pixelnco_320            res 1
+pixelnco_256            res 1
+blank_color             res 1
+
+solid_command           res 1
+extra_pillar            res 1
+
+hsync_sequence_buffer   res 8*2
+vsync_sequence_buffer   res 8*2
+
+cmod_val                res 1
+cy_val                  res 1
+ci_val                  res 1
+cq_val                  res 1
+cq_alter_val            res 1
+cfrq_val                res 1
+mode_end
+
+
+CON
+
+' clock source used below
+    #0, CLKSRC_XTAL, CLKSRC_XIN
+
+' setup one of these based on your P2 HW input clock,
+' this will only be used if the PLL settings get automatically computed (see code below)
+    'CLKIN_HZ = _xtalfreq ' also only enable CLKSRC_XTAL below as CLKSRC
+    'CLKIN_HZ = _xinfreq  ' also only enable CLKSRC_XIN below as CLKSRC
+    CLKIN_HZ = 20000000 ' assume 20MHz crystal by default
+
+    CLKSRC = CLKSRC_XTAL ' enable this for crystal clock source (default)
+    'CLKSRC = CLKSRC_XIN ' enable this for direct input clock source on XI (no crystal)
+
+' parameters used when automatically determining PLL settings
+    TOLERANCE_HZ = 500000    ' pixel clock accuracy will be constrained by this when no exact ratios are found
+    MAXVCO_HZ    = 350000000 ' for safety, but you could try to overclock even higher at your own risk
+    MINVCO_HZ    = 100000000
+    MINPLLIN_HZ  = 500000    ' setting lower can find more PLL ratios but may begin to introduce more PLL jitter
+
+PRI computeClockMode(desiredHz) : mode | vco, finput, f, p, div, m, error, bestError
+    bestError := -1
+    repeat p from 0 to 30 step 2
+        ' compute the ideal VCO frequency f at this value of P
+        if p <> 0
+            if desiredHz > MAXVCO_HZ/p ' test it like this to not overflow
+                quit
+            f := desiredHz * p
+        else
+            f := desiredHz
+            if f > MAXVCO_HZ
+                quit
+        ' scan through D values, and find best M, retain best case
+        repeat div from 1 to 64
+            'compute the PLL input frequency from the crystal through the divider
+            finput := CLKIN_HZ/div
+            if finput < MINPLLIN_HZ ' input getting too low, and only gets lower so quit now
+                quit
+
+            ' determine M value needed for this ideal VCO frequency and input frequency
+            m := f / finput
+
+            ' check for the out of divider range case
+            if m +> 1024
+                quit
+
+            ' zero is special and gets a second chance
+            if m == 0
+                m++
+
+            ' compute the actual VCO frequency at this particular M, D setting
+            vco := finput * m
+            if vco +< MINVCO_HZ
+                quit
+            if vco +> MAXVCO_HZ
+                next
+
+            ' compute the error and check next higher M value if possible, it may be closer
+            error := abs(f - vco)
+            if m < 1024 and (vco + finput) +< MAXVCO_HZ
+                if error > abs(f - (vco + finput))
+                    error := abs(f - (vco + finput))
+                    m++
+
+            ' retain best allowed frequency error and divider bits found so far
+            if error +< bestError and error +< TOLERANCE_HZ+1
+                bestError := error
+                mode := ((div-1) << 18) + ((m-1) << 8) + (((p/2 - 1) & $f) << 4)
+
+            ' quit whenever perfect match found
+            if bestError == 0
+                quit
+
+        if bestError == 0
+            quit
+
+    ' final clock mode format is this #%0000_000E_DDDD_DDMM_MMMM_MMMM_PPPP_CCSS
+    if mode
+        ' also set 15 or 30pF capacitor loading based on input crystal frequency
+        mode |= (1<<24) ' enable PLL
+        if (CLKSRC == CLKSRC_XTAL) ' enable oscillator and caps for crystal
+            mode |= (CLKIN_HZ < 16000000) ? %1111 : %1011
+        else
+            mode |= %0111 ' don't enable oscillator
+
+CON  ' CSC constant calculation
+
+    ONE_IRE = 255.0 / 180.0
+
+    BLANKING_LEVEL = ONE_IRE*40.0
+    PEDESTAL = 0.0'ONE_IRE*7.5 ' NTSC only, other standards (including NTSC-J) don't have pedestal
+
+    BLANK_LEVEL = round(BLANKING_LEVEL)
+
+    B2W_NTSC = ONE_IRE*100.0 - PEDESTAL
+    YSCALE_NTSC = 127.0*(B2W_NTSC/255.0)
+    IQSCALE_NTSC = YSCALE_NTSC * 1.33
+
+    B2W_PAL = ONE_IRE*100.0
+    YSCALE_PAL = 127.0*(B2W_PAL/255.0)
+    UVSCALE_PAL = YSCALE_PAL * 1.33 ' Can't set correct amplitude (around 1.47) because weird overflow?
+
+    CY_NTSC      = (round(0.299*YSCALE_NTSC)&$FF)<<24 + (round(0.587*YSCALE_NTSC)&$FF)<<16 + (round(0.114*YSCALE_NTSC)&$FF)<<8 + round(BLANKING_LEVEL+PEDESTAL)
+    CI_NTSC      = (round(+0.5959*IQSCALE_NTSC)&$FF)<<24 + (round(-0.2746*IQSCALE_NTSC)&$FF)<<16 + (round(-0.3216*IQSCALE_NTSC)&$FF)<<8 + round(BLANKING_LEVEL)
+    CQ_NTSC      = (round(+0.2115*IQSCALE_NTSC)&$FF)<<24 + (round(-0.5227*IQSCALE_NTSC)&$FF)<<16 + (round(+0.3112*IQSCALE_NTSC)&$FF)<<8 + 128
+
+    CY_PAL      = (round(0.299*YSCALE_PAL)&$FF)<<24 + (round(0.587*YSCALE_PAL)&$FF)<<16 + (round(0.114*YSCALE_PAL)&$FF)<<8 + round(BLANKING_LEVEL)
+    CU_PAL      = (round(-0.147*UVSCALE_PAL)&$FF)<<24 + (round(-0.289*UVSCALE_PAL)&$FF)<<16 + (round(+0.436*UVSCALE_PAL)&$FF)<<8 + round(BLANKING_LEVEL)
+    CV_PAL_ODD  = (round(+0.615*UVSCALE_PAL)&$FF)<<24 + (round(-0.515*UVSCALE_PAL)&$FF)<<16 + (round(-0.100*UVSCALE_PAL)&$FF)<<8 + 128
+    CV_PAL_EVEN = (round(-0.615*UVSCALE_PAL)&$FF)<<24 + (round(+0.515*UVSCALE_PAL)&$FF)<<16 + (round(+0.100*UVSCALE_PAL)&$FF)<<8 + 128
+
+
+    COLOR_BURST_NTSC  = $7C9900_01
+    'COLOR_BURST_PAL  = $4DFF0001
+    'COLOR_BURST_NTSC = $7FAF00_01
+    COLOR_BURST_PAL   = $D8A351_01
+    'COLOR_BURST_NTSC = $B9FF00_01
+
+
+    CY_COMP_SDTV  = ( 27&$FF) << 24 + ( 53&$FF) << 16 + ( 10&$FF) << 8 + BLANK_LEVEL
+    CPB_COMP_SDTV = (-15&$FF) << 24 + (-30&$FF) << 16 + ( 45&$FF) << 8 + 128
+    CPR_COMP_SDTV = ( 45&$FF) << 24 + (-38&$FF) << 16 + ( -7&$FF) << 8 + 128
+
+    Y_BLANK = 0
+    Y_SYNC = 256-BLANK_LEVEL
+
+
+        HDMI_BLANK  = %1101010100_1101010100_1101010100_10
+        HDMI_HSYNC  = %1101010100_1101010100_0010101011_10
+        HDMI_VSYNC  = %0101010100_0101010100_0101010100_10
+        HDMI_HVSYNC = %0101010100_0101010100_1010101011_10
+
+PRI ili_sendcmd(pins,cmd,parct,par)
+  pinl(pins.byte[1]) ' CS low
+  ili_sendbyte(pins,cmd,true)
+  repeat parct
+    ili_sendbyte(pins,par,false)
+    par >>= 8
+  pinh(pins.byte[1]) ' CS high
+  pinf(pins.byte[3]) ' float SDA
+
+PRI ili_sendbyte(pins,v,cmdflag)
+  v rev= 8
+  v.[0] := not cmdflag
+  repeat 9
+    pinw(pins.byte[3],v)
+    v>>=1
+    waitus(1)
+    pinh(pins.byte[2])
+    waitus(1)
+    pinl(pins.byte[2]) 
