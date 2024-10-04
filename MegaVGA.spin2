@@ -1,6 +1,6 @@
 CON
 
-  #0, MODE_VGA2X, MODE_VGA3X, MODE_VGA4X, MODE_COMPOSITE, MODE_SVIDEO, MODE_SVID_AND_COMP, MODE_HDMI, MODE_YPBPR, MODE_LCD6
+  #0, MODE_VGA2X, MODE_VGA3X, MODE_VGA4X, MODE_VGA5X, MODE_COMPOSITE, MODE_SVIDEO, MODE_SVID_AND_COMP, MODE_HDMI, MODE_YPBPR, MODE_LCD6
   #0, SUBMODE_NTSC, SUBMODE_PAL60
 
   #0, LCD_ILI9342
@@ -30,6 +30,8 @@ case mode
     modeptr := @vga3x_config
   MODE_VGA4X:
     modeptr := @vga4x_config
+  MODE_VGA5X:
+    modeptr := @vga5x_config
   MODE_COMPOSITE,MODE_SVIDEO,MODE_SVID_AND_COMP:
     case submode
       SUBMODE_NTSC:  modeptr := @ntsc_config
@@ -98,9 +100,10 @@ if cogn < 0
   abort cogn
 
 case mode
-  MODE_VGA2X,MODE_VGA3X,MODE_VGA4X:
+  MODE_VGA2X,MODE_VGA3X,MODE_VGA4X,MODE_VGA5X:
     wrpin(basepin+0,P_DAC_124R_3V|P_CHANNEL|(cogn<<8))
     wrpin((basepin+1) addpins 2,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
+    wrpin(discrete_sync,P_DAC_124R_3V|P_BITDAC|($F0<<8))
     pinl(basepin addpins 3)
   MODE_COMPOSITE:
     wrpin(basepin,P_DAC_75R_2V|P_CHANNEL|(cogn<<8))
@@ -352,6 +355,46 @@ long    $00_00_5A_00 ' CQ
 long    $00_00_00_00 ' CQ XORlternate value
 long    0 ' CFRQ
 
+vga5x_config
+long 327_600_000
+' Timing
+long    5 - 1 ' line multiplier minus one
+long    10*3 ' native front porch lines
+long    2*3 ' native sync lines
+long    33*3 ' native back porch lines
+long    round(2147483648.0/13.0*1.2) ' Sync NCO value
+long    round(2147483648.0/13.0*1.2) ' H40 NCO value
+long    round(2147483648.0/13.0*1.2*256.0/320.0) ' H32 NCO value
+long    %00 ' blanking color
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 320 ' blank line
+long    0 ' extra pillar
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' HSync section 1 (front porch)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01 ' HSync section 2 (sync pulse)
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24,$00 ' HSync section 3 (back porch)
+long                         0,0 ' HSync padding 4
+long                         0,0 ' HSync padding 5
+long                         0,0 ' HSync padding 6
+long                         0,0 ' HSync padding 7
+long                         0,0 ' HSync padding 8
+
+long    X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 8,$00  ' VSync section 1 (front porch)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 48,$01  ' VSync section 2 (sync pulse)
+long   X_DACS_3_2_1_0|X_IMM_1X32_4DAC8 + 24 + 320,$00 ' VSync section 3 (back porch + active)
+long                         0,0 ' VSync padding 4
+long                         0,0 ' VSync padding 5
+long                         0,0 ' VSync padding 6
+long                         0,0 ' VSync padding 7
+long                         0,0 ' VSync padding 8
+
+' Color conversion
+long    %0_01_1_000_1 ' CMOD mode + flags
+long    $5A_00_00_00 ' CY
+long    $00_5A_00_00 ' CI
+long    $00_00_5A_00 ' CQ
+long    $00_00_00_00 ' CQ XORlternate value
+long    0 ' CFRQ
 
 ntsc_config
 long 53_693_175*6
