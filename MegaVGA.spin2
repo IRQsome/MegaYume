@@ -179,7 +179,7 @@ long %11            ' HSync color
 long %11            ' VSync color
 long %01            ' HSync+VSync color
 long COLOR_BURST_NTSC ' Color burst color (NTSC/PAL only)
-long round(4_294_967_296.0*3_579_545.0/float(VIDEO_CLKFREQ))              ' Color burst frequency  (NTSC/PAL only)
+long round(4_294_967_296.0*3_579_545.0/float(VIDEO_CLKFREQ))-1            ' Color burst frequency  (NTSC/PAL only)
 long CY_NTSC        ' CY
 long CI_NTSC        ' CI
 long CQ_NTSC        ' CQ
@@ -204,19 +204,19 @@ DAT ' Timings
 timing_native
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 1              ' active line multiplier
-long 3              ' V front porch
+long 1              ' V front porch
 long 9              ' V sync
 long 12             ' V back porch
 long 0              ' extra pillar
-long 320            ' blank line
-long 8              ' H front porch
-long 28             ' H sync
-long 28             ' H back porch
-long round(2147483648.0/float(CLK_MULTIPLIER*4)) ' Sync NCO
-long round(2147483648.0/float(CLK_MULTIPLIER*4)) ' Pixel NCO
-long round(2147483648.0/float(CLK_MULTIPLIER*4)*256.0/320.0) ' Alt-res NCO
-long 3              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
-long 16             ' Burst (NTSC/PAL only - subtracts from H.BP)
+long 256            ' blank line
+long 7+14           ' H front porch
+long 26             ' H sync
+long 25+14          ' H back porch
+long round(2147483648.0/float(CLK_MULTIPLIER*10)) ' Sync NCO
+long round(2147483648.0/float(CLK_MULTIPLIER*8)) ' Pixel NCO
+long round(2147483648.0/float(CLK_MULTIPLIER*10)) ' Alt-res NCO
+long 2              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
+long 12             ' Burst (NTSC/PAL only - subtracts from H.BP)
 
 timing_line2x
 long VIDEO_CLKFREQ  ' CLKFREQ
@@ -229,9 +229,9 @@ long 320            ' blank line
 long 8              ' H front porch
 long 48             ' H sync
 long 24             ' H back porch
-long round(2147483648.0/13.45/2.0) ' Sync NCO
-long round(2147483648.0/13.45/2.0)      ' Pixel NCO
-long round(2147483648.0/13.45/2.0*256.0/320.0)              ' Alt-res NCO
+long round(2147483648.0/25.65) ' Sync NCO
+long round(2147483648.0/25.65)      ' Pixel NCO
+long round(2147483648.0/25.65*256.0/320.0)              ' Alt-res NCO
 long 0              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
 long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 
@@ -246,26 +246,9 @@ long 320            ' blank line
 long 8              ' H front porch
 long 48             ' H sync
 long 24             ' H back porch
-long round(2147483648.0/13.45/2.0*1.5) ' Sync NCO
-long round(2147483648.0/13.45/2.0*1.5)      ' Pixel NCO
-long round(2147483648.0/13.45/2.0*1.5*256.0/320.0)              ' Alt-res NCO
-long 0              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
-long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
-
-timing_owieouch
-long VIDEO_CLKFREQ  ' CLKFREQ
-long 2              ' active line multiplier
-long 12             ' V front porch
-long 2              ' V sync
-long 33             ' V back porch
-long 160            ' extra pillar
-long 640            ' blank line
-long 56             ' H front porch
-long 96             ' H sync
-long 283            ' H back porch
-long $0CCCCCCD      ' Sync NCO
-long $0CCCCCCD      ' Pixel NCO
-long 2              ' Alt-res NCO
+long round(2147483648.0/25.65*1.5) ' Sync NCO
+long round(2147483648.0/25.65*1.5)      ' Pixel NCO
+long round(2147483648.0/25.65*1.5*256.0/320.0)              ' Alt-res NCO
 long 0              ' Breezeway (NTSC/PAL only - subtracts from H.BP)
 long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 
