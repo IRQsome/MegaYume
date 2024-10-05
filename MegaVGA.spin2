@@ -221,9 +221,9 @@ long 12             ' Burst (NTSC/PAL only - subtracts from H.BP)
 timing_line2x
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
-long 12             ' V front porch
+long 10             ' V front porch
 long 2              ' V sync
-long 33             ' V back porch
+long 32             ' V back porch
 long 0              ' extra pillar
 long 320            ' blank line
 long 8              ' H front porch
@@ -238,9 +238,9 @@ long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 timing_line3x
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 3              ' active line multiplier
-long 18             ' V front porch
+long 15             ' V front porch
 long 3              ' V sync
-long 51             ' V back porch
+long 48             ' V back porch
 long 0              ' extra pillar
 long 320            ' blank line
 long 8              ' H front porch
@@ -256,9 +256,9 @@ long 0              ' Burst (NTSC/PAL only - subtracts from H.BP)
 timing_tmds_640x480
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
-long 12             ' V front porch
+long 10             ' V front porch
 long 2              ' V sync
-long 33             ' V back porch
+long 32             ' V back porch
 long 0              ' extra pillar
 long 640            ' blank line
 long 56             ' H front porch
@@ -273,9 +273,9 @@ long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 timing_tmds_768x480
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
-long 12             ' V front porch
+long 10             ' V front porch
 long 2              ' V sync
-long 33             ' V back porch
+long 32             ' V back porch
 long 64             ' extra pillar
 long 768            ' blank line
 long 56             ' H front porch
@@ -290,9 +290,9 @@ long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 timing_tmds_800x480
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
-long 12             ' V front porch
+long 10             ' V front porch
 long 2              ' V sync
-long 33             ' V back porch
+long 32             ' V back porch
 long 80             ' extra pillar
 long 800            ' blank line
 long 56             ' H front porch
@@ -307,9 +307,9 @@ long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 timing_tmds_854x480
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 2              ' active line multiplier
-long 12             ' V front porch
+long 10             ' V front porch
 long 2              ' V sync
-long 33             ' V back porch
+long 32             ' V back porch
 long 107            ' extra pillar
 long 854            ' blank line
 long 56             ' H front porch
