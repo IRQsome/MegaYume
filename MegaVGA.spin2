@@ -489,6 +489,7 @@ blankline_packets res 1 ' rest of blanking line after packets (HDMI only)
 lines_left res 1 ' lines left in current section
 scanptr res 1
 vdp_mode res 1
+bob_lines res 1
 
 scantimecomp res 1 ' Time compensator for threaded scan conversion
 
@@ -581,11 +582,19 @@ frame_loop
               call blankline_func   
               djnz lines_left,#.back_porch
 
+              rdlong vdp_mode,vdpmode_ptr ' read VDP mode here, once.
+
               neg virtual_line,#BORDER_TOP - VDPR_OFFSET ' TODO SHOULD FLE INSTEAD
               mov subline,#0
               mov lines_left,#BORDER_TOP
               mul lines_left,line_multiplier
-              ' TODO Interlace bob here
+
+              ' Bob interlace for line2x modes
+              testb vdp_mode,#VDPBIT_INTERLACE wc
+              testbn virtual_frame,#0 andc
+        if_c  add lines_left,bob_lines
+        if_c  sub subline,bob_lines
+
 .top_border
               call hsync_func
               call borderline_func
@@ -595,7 +604,6 @@ frame_loop
               mul lines_left,line_multiplier
               mov scanptr,scanbuffer_base
               add virtual_frame,#1
-              rdlong vdp_mode,vdpmode_ptr ' read VDP mode here, once.
 .visible
               call hsync_func
               rdfast bit31,scanptr ' fire up FIFO
@@ -620,7 +628,12 @@ frame_loop
 
               mov lines_left,#BORDER_BOTTOM
               mul lines_left,line_multiplier
-              ' TODO Interlace bob here
+
+
+              ' Bob interlace for line2x modes
+              testb vdp_mode,#VDPBIT_INTERLACE wc
+              testb virtual_frame,#0 andc ' got incremented inbetween
+        if_c  sub lines_left,bob_lines
 .bottom_border
               call hsync_func
               call borderline_func
@@ -1185,6 +1198,9 @@ video_init
 
               mov subline_incmod,line_multiplier
               cmpsub subline_incmod,#1
+
+              mov bob_lines,line_multiplier
+              shr bob_lines,#1
 
               mov borderline,blankline ' dup
 
