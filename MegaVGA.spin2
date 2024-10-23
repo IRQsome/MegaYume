@@ -1371,9 +1371,9 @@ init_hdmi    ' HDMI (=DVI + audio)
       if_c  mov temp1,audio_period ' If not resampling, use input rate
 
             ' Disable de-jitter code if not resampling or fractional ratio >= 0.5
+            tjz resample_antidrift_period,#.yes_djkill
             tjns resample_ratio_frac,#.no_djkill
-            tjnz resample_antidrift_period,#.no_djkill
-            mov build_audio:jptch1,#0 ' NOP
+.yes_djkill mov build_audio:jptch1,#0 ' NOP
             mov build_audio:jptch2,#0 ' NOP
             debug("Disabled de-jitter!")
 .no_djkill
