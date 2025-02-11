@@ -206,9 +206,9 @@ DAT ' Timings
 timing_native
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 1              ' active line multiplier
-long 1              ' V front porch
-long 9              ' V sync
-long 12             ' V back porch
+long 4              ' V front porch
+long 3              ' V sync
+long 15             ' V back porch
 long 0              ' extra pillar
 long 256            ' blank line
 long 7+14           ' H front porch
@@ -716,6 +716,7 @@ vsync_normal ' Vsync line including sync etc
               tjs vsync_pin,#.no_v
               drvl vsync_pin ' should only be 4 cycles late
 .no_v         xcont hsync_bp,vsync_color
+              xor cq_val,cq_xor ' Make sure PAL phase is alternating
               call #vline_update ' update client on time
               xcont blankline,vsync_color
         _ret_ xcont hsync_fp,vsync_color
