@@ -338,9 +338,30 @@ hsync_ntsc ' also PAL
               jmp #vline_update
 
 vsync_ntsc    ' SDTV serrated sync
-
-              ' TODO
+              cmp lines_left,#7 wc
+        if_c  cmpr lines_left,#3 wc ' If NC, do equalization
+        if_nc call #ntsc_equ_pulse
+        if_c  call #ntsc_sync_pulse
+              xor cq_val,cq_xor ' Make sure PAL phase is alternating
+              call #vline_update ' update client on time
+        if_nc call #ntsc_equ_pulse
+        if_c  call #ntsc_sync_pulse
               ret
+
+ntsc_halfline
+              setq nco_sync
+              xcont hsync_tip,blank_color
+        _ret_ xcont vsync_half,blank_color
+
+ntsc_equ_pulse
+              setq nco_sync
+              xcont hsync_tip,hsync_color
+        _ret_ xcont vsync_half,blank_color
+
+ntsc_sync_pulse
+              setq nco_sync
+              xcont vsync_half,vsync_color
+        _ret_ xcont hsync_tip,hvsync_color
 
 
 scanfunc_2x_rgb24 ' scan out 2 pixels with 2x doubling -> 40 streamer cycles
@@ -485,6 +506,7 @@ subline_incmod res 1
 borderline res 1
 hsync_bpshort res 1 ' NTSC/PAL: BP - (breeze+burst)
 blankline_packets res 1 ' rest of blanking line after packets (HDMI only)
+vsync_half res 1 ' Half line - hsync pulse
 
 lines_left res 1 ' lines left in current section
 scanptr res 1
@@ -569,6 +591,11 @@ frame_loop
               call blankline_func  
               djnz lines_left,#.front_porch
 
+              testb vdp_mode,#VDPBIT_INTERLACE wc
+              testb virtual_frame,#0 andc
+              cmp vsync_func,#vsync_ntsc wz
+  if_c_and_z  call #ntsc_halfline
+
               mov lines_left,sync_lines
 .vsync
               cmp lines_left,#1 wz
@@ -577,6 +604,13 @@ frame_loop
               djnz lines_left,#.vsync
 
               mov lines_left,bp_lines
+
+              testb vdp_mode,#VDPBIT_INTERLACE wc
+              testb virtual_frame,#0 andc
+              cmp vsync_func,#vsync_ntsc wz
+  if_c_and_z  sub lines_left,#1
+  if_c_and_z  xor cq_val,cq_xor
+  if_c_and_z  call #ntsc_halfline
 .back_porch
               call vbi_hsync_func
               call blankline_func   
@@ -647,7 +681,7 @@ vline_update ' update line count to client and scanptr
               wrlong virtual_line,linectr_ptr
               incmod subline,subline_incmod wc
         if_c  add virtual_line,#1
-              ret
+              ret wcz
               
 line_native  ' native scanline
               cmp extra_pillar,#0 wz
@@ -1523,8 +1557,19 @@ util_sdtvcommon
               mov hsync_bpshort,hsync_bp
               sub hsync_bpshort,hsync_breeze
               sub hsync_bpshort,hsync_burst
+              mov vsync_half,blankline
+              add vsync_half,hsync_bp
+              add vsync_half,hsync_tip
+              add vsync_half,hsync_fp
+              shr vsync_half,#1
+              sub vsync_half,hsync_tip
               mov hsync_func,#hsync_ntsc
               mov vbi_hsync_func,#hsync_ntsc
+
+              sub fp_lines,#3
+              add sync_lines,#6
+              sub bp_lines,#3
+              mov vsync_func,#vsync_ntsc
 
               call #util_setactive
               
@@ -1534,6 +1579,7 @@ util_setsyncs
               or hsync_breeze,pa
               or hsync_burst,pa ' is also hsync_guardband
               or hsync_bpshort,pa
+              or vsync_half,pa
               or hsync_fp,pa
               or hsync_tip,pa
               or hsync_bp,pa
