@@ -203,6 +203,9 @@ long CV_PAL_ODD^CV_PAL_EVEN ' CQ XOR value (NTSC/PAL only)
 
 DAT ' Timings
 
+' Note: native timing must have an even number of sync NCO cycles per scanline
+'       and exactly 3 Vsync lines
+'       Otherwise interlace timing will be off
 timing_native
 long VIDEO_CLKFREQ  ' CLKFREQ
 long 1              ' active line multiplier
@@ -592,7 +595,7 @@ frame_loop
               djnz lines_left,#.front_porch
 
               testb vdp_mode,#VDPBIT_INTERLACE wc
-              testb virtual_frame,#0 andc
+              testbn virtual_frame,#0 andc
               cmp vsync_func,#vsync_ntsc wz
   if_c_and_z  call #ntsc_halfline
 
@@ -603,14 +606,13 @@ frame_loop
               call vsync_func
               djnz lines_left,#.vsync
 
-              mov lines_left,bp_lines
-
               testb vdp_mode,#VDPBIT_INTERLACE wc
-              testb virtual_frame,#0 andc
+              testbn virtual_frame,#0 andc
               cmp vsync_func,#vsync_ntsc wz
-  if_c_and_z  sub lines_left,#1
   if_c_and_z  xor cq_val,cq_xor
   if_c_and_z  call #ntsc_halfline
+
+              mov lines_left,bp_lines
 .back_porch
               call vbi_hsync_func
               call blankline_func   
@@ -1566,10 +1568,11 @@ util_sdtvcommon
               mov hsync_func,#hsync_ntsc
               mov vbi_hsync_func,#hsync_ntsc
 
-              sub fp_lines,#3
-              add sync_lines,#6
-              sub bp_lines,#3
-              mov vsync_func,#vsync_ntsc
+              cmp sync_lines,#3 wz
+        if_z  sub fp_lines,#3
+        if_z  add sync_lines,#6
+        if_z  sub bp_lines,#3
+        if_z  mov vsync_func,#vsync_ntsc
 
               call #util_setactive
               
