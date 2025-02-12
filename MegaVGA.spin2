@@ -472,7 +472,7 @@ app_params_end
 ' Timing variables
 timing_vars
 dummy_clkfreq   res 1 ' handled by Spin code
-line_multiplier res 1 ' 0 will create SDTV-style serrated VSync with real interlacing
+line_multiplier res 1
 fp_lines        res 1
 sync_lines      res 1
 bp_lines        res 1
@@ -1259,6 +1259,7 @@ init_rgbhv ' Separate H/V sync RGB (=VGA)
 
               setcmod #%0_01_1_000_1 ' Normal mode + invert sync
               mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+              ' TODO: figure out how interlacing works for RGBHV
               call #util_setsyncs
               call #util_setactive
               
@@ -1267,6 +1268,7 @@ init_rgbhv ' Separate H/V sync RGB (=VGA)
 init_rgbs ' Combined sync RGB
               setcmod #%0_01_1_000_1 ' Normal mode + invert sync
               mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+              call #util_ntscsync ' Use NTSC-style sync for native 1x timing
               call #util_setsyncs
               call #util_setactive
 
@@ -1280,6 +1282,7 @@ init_rgbs ' Combined sync RGB
 init_soggy ' Sync-on-Green or YPbPr
               setcmod #%0_01_1_010_0 ' Normal mode + DAC0 to green
               mov pa,##X_DACS_X_X_X_0|X_IMM_1X32_4DAC8
+              call #util_ntscsync ' Use NTSC-style sync for native 1x timing
               call #util_setsyncs
               call #util_setactive
 
@@ -1553,26 +1556,32 @@ util_vsyncpin
             wrpin #0,vsync_pin ' Should we give this a mode?
       _ret_ drvl vsync_pin
 
-
-util_sdtvcommon
-              setcfrq burst_freq
-              mov hsync_bpshort,hsync_bp
-              sub hsync_bpshort,hsync_breeze
-              sub hsync_bpshort,hsync_burst
+util_ntscsync
+              ' Set NTSC/PAL-style sync if possible
               mov vsync_half,blankline
               add vsync_half,hsync_bp
               add vsync_half,hsync_tip
               add vsync_half,hsync_fp
               shr vsync_half,#1
               sub vsync_half,hsync_tip
-              mov hsync_func,#hsync_ntsc
-              mov vbi_hsync_func,#hsync_ntsc
 
-              cmp sync_lines,#3 wz
+              cmp line_multiplier,#1 wz
+        if_z  cmp sync_lines,#3 wz
         if_z  sub fp_lines,#3
         if_z  add sync_lines,#6
         if_z  sub bp_lines,#3
         if_z  mov vsync_func,#vsync_ntsc
+              ret wcz
+
+util_sdtvcommon
+              setcfrq burst_freq
+              mov hsync_bpshort,hsync_bp
+              sub hsync_bpshort,hsync_breeze
+              sub hsync_bpshort,hsync_burst
+              mov hsync_func,#hsync_ntsc
+              mov vbi_hsync_func,#hsync_ntsc
+
+              call #util_ntscsync
 
               call #util_setactive
               
