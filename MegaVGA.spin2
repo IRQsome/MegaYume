@@ -583,7 +583,6 @@ video_entry
               'xinit blankline,blank_color
 frame_loop
               'debug(udec(virtual_frame),uhex_long(linecmd,extra_pillar,hsync_fp,hsync_tip,hsync_bp,nco_sync,nco_main))
-              neg virtual_line,#32-VDPR_OFFSET ' TODO: Magic number
               mov subline,subline_incmod
 
               mov lines_left,fp_lines
@@ -1248,6 +1247,7 @@ video_init
               setdacs dac_blanking ' default CSC color when streamer masked
 
               mov virtual_frame,#0
+              neg virtual_line,#64 ' Initialize to sufficiently nonsensical value
 
               jmp initfunc_ptr
 
