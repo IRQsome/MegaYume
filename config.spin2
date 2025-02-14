@@ -55,49 +55,28 @@ SDCARD_DI = 59
 SDCARD_DO = 58
 
 
-'{ ' NEW NEW NEW
-VIDEO_MODE = vconst.MODE_HDMI_VGA
-VIDEO_SUBMODE = vconst.SUBMODE_TMDS_640x480
-
-ANALOG_BASEPIN = 24
+'{ ' NEW video driver config
+VIDEO_MODE = vconst.MODE_VGA
+VIDEO_SUBMODE = vconst.SUBMODE_2X
+ANALOG_BASEPIN = 24 ' For VGA/NTSC/etc
 VSYNC_PIN = 24+4
-DIGITAL_BASEPIN = 32 ' MUST be -1 if not present
+DIGITAL_BASEPIN = -1 ' For HDMI/DVI - MUST be -1 if not present
 DIGITAL_REVERSED = false
-
 '}
 
-{
-VIDEO_MODE = vconst.MODE_VGA2X
-VIDEO_SUBMODE = 0
-
-VGA_BASEPIN = 24
-VGA_VSYNC   = VGA_BASEPIN + 4
-'}
-
-{
-VIDEO_MODE = vconst.MODE_SVID_AND_COMP
-VIDEO_SUBMODE = vconst.SUBMODE_NTSC
-
-VGA_BASEPIN = 24
-VGA_VSYNC   = 0
-'}
-{
-VIDEO_MODE = vconst.MODE_HDMI
-VIDEO_SUBMODE = 0
-
-VGA_BASEPIN = 32
-VGA_VSYNC   = 0
-'}
-
-{
+{ ' For 6-bit ILI9342 LCD screen
 VIDEO_MODE = vconst.MODE_LCD6
-VIDEO_SUBMODE = vconst.LCD_ILI9342
-VGA_BASEPIN = 0
-VGA_VSYNC = (8<<0) + (9<<8) + (10<<16) + (11<<24)
+VIDEO_SUBMODE = 0 ' Not used (yet)
+
+ANALOG_BASEPIN = -1 ' Not used
+VSYNC_PIN = (8<<0) + (9<<8) + (10<<16) + (11<<24) ' extra pins: DOTCLK<<0 + CS<<8 + CLK<<16 + SDA<<24
+DIGITAL_BASEPIN = 0 ' HSync, VSync and 6 data pins
+DIGITAL_REVERSED = false ' Not used
 '}
 
 AUDIO_LEFT  = 24+6
 AUDIO_RIGHT = AUDIO_LEFT + 1
+' Note that these must be set even if digital audio is used
 
 '' Uncomment ONLY ONE of the below
 #define INPUT_USE_USB
