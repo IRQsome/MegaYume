@@ -86,3 +86,6 @@ Everything else is the same as `MODE_COMPOSITE`
 
 A few Megadrive games (notable: 2-player vs. mode in _Sonic 2_) use the system's interlaced mode. In modes using native 15kHz timing (except `MODE_RGBHV`), this is implemented as real interlacing. In all upscaling modes, this is implemented as "Bob" deinterlacing. `MODE_RGBHV` with `SUBMODE_1X` currently does not support interlace properly.
 
+## Note on H32 mode
+
+Some Megadrive games use "H32 mode", which is 256x224 rather than the more common "H40 mode" (320x224). In all analog output modes, H32 images are stretched out to the same size as H40. In digital modes (HDMI/DVI/LCD6), square pixels are maintained, leading to a "squished" image.
