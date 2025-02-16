@@ -15,8 +15,6 @@ VERSION_MAJOR = 1
 VERSION_MINOR = 4
 VERSION_RC    = 0
 
-'' Note: this sucks. not anymore.
-'' Perhaps more important note: use the included build.sh.
 
 #include "config.spin2"
 
@@ -723,7 +721,7 @@ byte "   Garry Jordan & Marco Maccaferri - USB driver",0
 byte "",0
 byte " UI fonts used: ｢Misaki Gothic 2nd｣ and ｢funscii｣",0
 byte "",0
-byte " This program is free software under the MIT license.",0
+byte " This program is free software under the IESL v1 license.",0
 byte " See https://github.com/IRQsome/MegaYume for info.",0
 byte " THE SOFTWARE IS PROVIDED ｢AS IS｣, WITHOUT WARRANTY OF ANY KIND.",0
 byte "",0

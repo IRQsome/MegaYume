@@ -11,8 +11,6 @@ CON ' Header
 ''
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
-'' Note: this sucks. not as much.
-'' Perhaps more important note: use the included build.sh.
 
 #include "config.spin2"
 
