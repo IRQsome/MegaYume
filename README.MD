@@ -105,7 +105,7 @@ MegaYume uses a modified version of usbnew for usb input support, see [the usbne
 |-|-|
 |`config.spin2`|User config include file|
 |`RAMCONFIG.MD`|External memory configuration guide|
-|`build.sh`|Standard build script|
+|`build.sh`|Standard build script (USE THIS ONE)|
 |`build_gbrk.sh`|Build script for core debugging|
 |`build_comptest.sh`|Build script for compiler testing|
 |`megayume_lower.spin2`|Assembly language emulation core (68000,Z80,VDP,Audio,glue)|
@@ -113,7 +113,7 @@ MegaYume uses a modified version of usbnew for usb input support, see [the usbne
 |`fsadapter.c`|File system helper functions|
 |`MegaVGA.spin2`|Custom video driver|
 |`usbnew.spin2`|USB Input driver|
-|`padmap_parser.spin2`|PADMAP.TXT parser|
+|`padmap_parser.spin2`|PADMAP.TXT parser library|
 |`OPN2_ROM.DAT`|YM2612 quarter-sine and antilog ROM|
 |`CRAM2RGB.DAT`|CRAM to truecolor expansion table|
 |`cram_tablegen.rb`|Can generate the above|
@@ -122,4 +122,3 @@ MegaYume uses a modified version of usbnew for usb input support, see [the usbne
 |`FUNSCII.DAT`|main UI font (funscii 8x8)|
 |`MISAKI4W.DAT`|JIS font, half-width part (Misaki Gothic 2nd)|
 |`MISAKI8W.DAT`|JIS font, full-width part (Misaki Gothic 2nd)|
-|`memstuff`|Various (mostly outdated) things to do with external memory|
