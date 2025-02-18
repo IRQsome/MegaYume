@@ -384,7 +384,7 @@ line_scancomp_alt
               xcont altres_pillar,border_color
 
               mov scantimecomp,#WIDTH_ALT/2
-              mov scanfunc,#scanfunc_2x_rgb24
+              mov scanfunc,active_scanfunc
               call scantask
 .comploop     cmpsub scantimecomp,#1 wc
         if_c  call scanfunc
@@ -401,7 +401,7 @@ line_scancomp ' Software-scaled line with scan-compensated task
         if_nz xcont extra_pillar,border_color
 
               mov scantimecomp,#WIDTH/2
-              mov scanfunc,#scanfunc_2x_rgb24
+              mov scanfunc,active_scanfunc
               call scantask
 .comploop     cmpsub scantimecomp,#1 wc
         if_c  call scanfunc
@@ -435,6 +435,7 @@ blankline_func long line_blank
 audio_poll_func long dummy_func
 scanfunc        long dummy_func
 scantask        long dummy_func
+active_scanfunc long scanfunc_2x_rgb24
 
 ' Audio poller upper - pin number is patched in on demand
 audio_poll_repo
@@ -689,6 +690,8 @@ line_native  ' native scanline
         if_nz xcont extra_pillar,border_color
               setq nco_main
               xcont linecmd,#0 ' No color needed for DMA
+              mov scanfunc,#dummy_func
+              call scantask
         if_nz setq nco_sync
         if_nz xcont extra_pillar,border_color
               setq nco_sync
@@ -699,6 +702,8 @@ line_native_altnco ' alt-res scanline with NCO switch
         if_nz xcont extra_pillar,border_color
               setq nco_alt
               xcont linecmd_alt,#0 ' No color needed for DMA
+              mov scanfunc,#dummy_func
+              call scantask
         if_nz setq nco_sync
         if_nz xcont extra_pillar,border_color
               setq nco_sync
@@ -710,6 +715,8 @@ line_native_altpillar ' alt-res scanline with pillarbox
               setq nco_main
               xcont altres_pillar,border_color
               xcont linecmd_alt,#0 ' No color needed for DMA
+              mov scanfunc,#dummy_func
+              call scantask
               xcont altres_pillar,border_color
         if_nz setq nco_sync
         if_nz xcont extra_pillar,border_color
@@ -1202,6 +1209,32 @@ packet_data3  res 2
 
               fit 496
 
+DAT ' LCD overlay code
+              org video_ovl_area
+lcd_overlay
+
+lcd6_mask     long $FCFCFC00
+
+scanfunc_lcd6_rgb24
+              rflong scantmp
+              and scantmp,lcd6_mask
+              shr scantmp,#8
+              xcont pixel_multiplier,scantmp
+              rflong scantmp
+              and scantmp,lcd6_mask
+              shr scantmp,#8
+        _ret_ xcont pixel_multiplier,scantmp
+
+hsync_lcd6_vbi
+              ' just to refresh the clock pin
+              getbyte pb,extravpins,#0
+              wypin bit31,pb
+              jmp #hsync_normal
+
+              fit 496
+
+            
+
 
 DAT ' Hub init code
               orgh
@@ -1604,6 +1637,7 @@ util_setactive ' set default active line handling
               mov temp2,#0
 util_setactive_extra
               mov pa,##X_DACS_3_2_1_0|X_IMM_1X32_4DAC8
+util_setactive_extra_special
               or pa,temp2
               or borderline,pa
               cmp extra_pillar,#0 wz
@@ -1629,9 +1663,148 @@ util_setactive_extra
 '        _ret_ mov altline_func,#line_soft2x_alt
 
 init_ili9342 ' 6-bit digital LCD interface
-            ' TODO
-            jmp #$
+            '' TODO
+            ' load the overlay
+            loc pa,#@lcd_overlay
+            setq #495-video_ovl_area
+            rdlong video_ovl_area,pa
 
+            ' Pre-setup clock pin
+            getbyte pb,extravpins,#0
+            wrpin ##P_OE|P_PULSE|P_SYNC_IO,pb
+            debug(uhex_long(hsync_breeze),udec(pb))
+            wxpin hsync_breeze,pb
+
+            ' Setup video pins - Hsync+Vsync+6bit
+            getbyte temp2,vpins,#1
+            and temp2,#63
+            or temp2,#0 addpins 7
+            wrpin ##P_SYNC_IO,temp2
+            drvl temp2
+
+            and temp2,#%111000
+            'setd audio_poll_repo:pptchd,temp2
+            'sets audio_poll_repo:pptchs,temp2
+            shl temp2,#17
+            bith temp2,#encod X_PINS_ON
+
+            mov pa,##X_IMM_1X32_4DAC8
+            or pa,temp2
+            call #util_setsyncs
+            mov pa,##X_IMM_4X8_1DAC8  
+            call #util_setactive_extra_special
+
+            ' Setup methods
+            mov vbi_hsync_func,#hsync_lcd6_vbi
+            mov active_scanfunc,#scanfunc_lcd6_rgb24
+
+            ' initialize LCD controller
+            getbyte pb,extravpins,#1 ' CS high
+            drvh pb
+            getbyte pb,extravpins,#2 ' CLK low
+            drvl pb
+            ' SDA should be floating - if it isn't we can't help it
+            callpa #1,#util_waitms ' old code also had 5ms delay here?
+            callpa #$01,#ili_sendcmd_nopar ' Soft Reset
+            callpa #5,#util_waitms
+            callpa #$11,#ili_sendcmd_nopar ' Sleep OUT
+            callpa #5,#util_waitms
+
+            callpa #$29,#ili_sendcmd_nopar ' Display ON
+
+            mov temp2,##$42_93_FF ' magic number for EXTC
+            mov temp1,#3
+            callpa #$C8,#ili_sendcmd ' Set EXTC
+
+            mov temp2,#0 ' TODO: User value for MADCTL
+            mov temp1,#1
+            callpa #$36,#ili_sendcmd ' Set MADCTL
+
+            mov temp2,hsync_bp
+            add temp2,hsync_tip
+            rolbyte temp2,hsync_fp,#0
+            rolbyte temp2,bp_lines,#0
+            add temp2,sync_lines
+            rolbyte temp2,fp_lines,#0
+            mov temp1,#4
+            callpa #$B5,#ili_sendcmd ' Blanking Porch Control
+
+            mov temp2,#$04 'Gamma 2.5 setting
+            mov temp1,#1
+            callpa #$26,#ili_sendcmd ' Gamma Set
+
+            mov temp2,#$00_02 ' ???? but it makes inversion less objectionable
+            mov temp1,#2
+            callpa #$B4,#ili_sendcmd ' Display inversion control
+
+            mov temp2,#$6C ' (RGB, no DE pin, bypass memory, positive sync)
+            mov temp1,#1
+            callpa #$B0,#ili_sendcmd ' Set IFMODE
+
+            ' setup CLK pin (abuse breezeway entry)
+            debug(ubin_long(dira,dirb,outa,outb))
+            setcfrq nco_sync
+            getbyte pb,extravpins,#0
+            drvl pb
+            wypin bit31,pb
+            xinit ##$fffc,blank_color ' enter dummy command to ensure it stays in sync
+            waitx #511
+            mov temp2,##$07_00_00 ' (6 bit mode, enable ext. clock)
+            mov temp1,#3
+            callpa #$F6,#ili_sendcmd ' Set IFCTL (must be after clock on)
+
+            
+            jmp #video_entry
+
+util_waitms
+            rdlong pb,#@clkfreq
+            mul pa,##33555
+            shl pa,#7
+            qmul pa,pb
+            getqy pb
+      _ret_ waitx pb
+
+ili_sendcmd_nopar
+            mov temp1,#0
+ili_sendcmd
+            'debug("ili_sendcmd ",uhex(pa,temp1,temp2))
+
+            ' PA is command byte
+            ' temp1 is parameter count
+            ' temp2 is par data
+            ' (more than 4 byte is not supported)
+            getbyte pb,extravpins,#1 ' CS low
+            drvl pb
+            call #ili_sendbyte_cmd ' PA already has command byte
+            tjz temp1,#.nopar
+.parloop
+            callpa temp2,#ili_sendbyte_data
+            shr temp2,#8
+            djnz temp1,#.parloop
+.nopar
+            getbyte pb,extravpins,#1 ' CS high
+            drvh pb
+            getbyte pb,extravpins,#3 ' float SDA
+            fltl pb
+      _ret_ waitx #511
+
+
+ili_sendbyte_data
+            or pa,#256
+ili_sendbyte_cmd
+            'debug("ili_sendbyte ",uhex(pa))
+            shl pa,#23
+            rep @.loop,#9
+            getbyte pb,extravpins,#3 ' SDA
+            shl pa,#1 wc
+            drvc pb
+            waitx #350 ' 1us + change
+            getbyte pb,extravpins,#2 ' CLK
+            drvh pb
+            waitx #350 ' 1us + change
+            drvl pb
+.loop
+            ret wcz
 
 CON
 
