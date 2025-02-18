@@ -38,7 +38,7 @@ Same as the the above, but with simultaneous analog output. The analog timing is
 
 Analog RGB output with separate sync signals. HSync, R, G and B are sent, in that order, to four pins at `ANALOG_BASEPIN`. VSync is sent to `VSYNC_PIN`.
 
-Supported submodes are `SUBMODE_1X` through `SUBMODE_5X`, corrosponding to different scaling settings. The default `SUBMODE_2X` results in a standard 640x480 signal.
+Supported submodes are `SUBMODE_1X` through `SUBMODE_3X`, corrosponding to different scaling settings. The default `SUBMODE_2X` results in a standard 640x480 signal.
 
 ## MODE_RGBS
 
