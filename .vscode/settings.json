@@ -2,5 +2,10 @@
     "search.exclude": {
         "*.lst": true,
         "*.p2asm": true
-    }
+    },
+    "[spin2]": {
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.tabSize": 2,
+    },
 }
