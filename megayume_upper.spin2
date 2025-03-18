@@ -1305,7 +1305,7 @@ jis_font file "MISAKI8W.DAT"
 narrow_font file "MISAKI4W.DAT"
 wide_font file "FUNSCII.DAT"
 
-initpal
+initpal long
         long $FF00FF_00
         long $444444_00
         long $EEEEEE_00
