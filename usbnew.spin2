@@ -1,5 +1,5 @@
 {{
-    "USBNEW" modular USB input driver - v1.1.5
+    "USBNEW" modular USB input driver - v1.1.7
 
     By Ada Gottensträter ("Wuerfel_21")
 
@@ -27,6 +27,7 @@ CON
 
   NUMLOCK_DEFAULT_STATE = true
   RPI_KEYBOARD_NUMLOCK_HACK = true
+  XINPUT_IGNORE_EXTRA_INTFS = true ' Annoying fix for 8bitdo Ultimate 2C
 
   HAVE_MOUSE = false
   MOUSE_FULL_PROTOCOL = false ' Experimental: Use full HID report protocol for mice
@@ -2025,6 +2026,10 @@ end
                 mov     hdev_out_addr, hpar3            ' OUT endpoint address
                 'debug(udec(gp_intf_num))
                 debug(uhex_long(hdev_ep_addr,hdev_ep_addr+1,hdev_ep_addr+2,hdev_ep_addr+3,hdev_ep_addr+4,hdev_ep_addr+5,hdev_ep_addr+6,hdev_ep_addr+7),udec(gp_interval),uhex_long(hdev_out_addr))
+        if XINPUT_IGNORE_EXTRA_INTFS
+                cmp     hdev_class, #$FF        wz
+        if_z    jmp     #hset_config
+        end
                 jmp     #.next_intf
 .hub
                 cmp     hdev_subclass, #SUBCLASS_INTF_NONE  wz
@@ -3177,24 +3182,28 @@ hpad_ps3
 
                 debug(udec(hdev_port), " PS3 ", uhex_long(ep_addr_pid),uhex_long(ptrb))
 
+                bith    hidr_flags, #HID_AXIS_X addbits 5 ' Have all axes
+                setnib  hidr_flags, #6, #2
+
                 mov     hidr_lminmax, #$0000_00FF
                 rdbyte  retval, ptrb[5]         ' X = left stick X
                 call    #hpad_normalize
                 setword hidr_axis, retval, #0
-                bith    hidr_flags, #HID_AXIS_X
                 rdbyte  retval, ptrb[6]         ' Y = left stick Y
                 call    #hpad_normalize
                 setword hidr_axis, retval, #1
-                bith    hidr_flags, #HID_AXIS_Y
                 rdbyte  retval, ptrb[7]         ' Z = right stick X
                 call    #hpad_normalize
                 setword hidr_axis+1, retval, #0
-                bith    hidr_flags, #HID_AXIS_Z
                 rdbyte  retval, ptrb[8]         ' RZ = right stick Y
                 call    #hpad_normalize
                 setword hidr_axis+2, retval, #1
-                bith    hidr_flags, #HID_AXIS_RZ
-                setnib  hidr_flags, #4, #2
+                rdbyte  retval, ptrb[17]        ' RX = L2 analog
+                call    #hpad_normalize
+                setword hidr_axis+1, retval, #1
+                rdbyte  retval, ptrb[18]        ' RY = R2 analog
+                call    #hpad_normalize
+                setword hidr_axis+2, retval, #0
 
                 mov     hpar1, #8
                 mov     hpar2, #19
