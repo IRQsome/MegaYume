@@ -93,6 +93,10 @@ case mode
       SUBMODE_TMDS_800x480: timing := @timing_tmds_800x480
       SUBMODE_TMDS_854x480: timing := @timing_tmds_854x480
       other: timing := @timing_tmds_640x480
+  MODE_LCD6:
+    cmode := @cmode_lcd6
+    initf := @init_ili9342
+    timing := @timing_lcd6_320x240
   other:
     abort -1
 
@@ -200,6 +204,18 @@ long CU_PAL         ' CI
 long CV_PAL_EVEN    ' CQ
 long CV_PAL_ODD^CV_PAL_EVEN ' CQ XOR value (NTSC/PAL only)
 
+cmode_lcd6 ' 6 bit color-sequential LCD interface with H/V Sync
+long $00_00_00_00   ' DAC blanking value
+long $00_00_00_00   ' Blanking color
+long $00_00_00_01   ' HSync color
+long $00_00_00_02   ' VSync color
+long $00_00_00_03   ' HSync+VSync color
+long 0              ' Color burst color (NTSC/PAL only)
+long 0              ' Color burst frequency  (NTSC/PAL only)
+long 0              ' CY
+long 0              ' CI
+long 0              ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
 
 DAT ' Timings
 
@@ -325,6 +341,23 @@ long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
 long 0              ' Unused
 long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
+
+timing_lcd6_320x240
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 1              ' active line multiplier
+long 3              ' V front porch
+long 9              ' V sync
+long 10             ' V back porch
+long 0              ' extra pillar
+long 320*3          ' blank line
+long 25*3           ' H front porch
+long 15*3           ' H sync
+long 67*3           ' H back porch
+long $08000000      ' Sync NCO
+long 0              ' Pixel NCO
+long 3              ' Alt-res NCO
+long 16 + (16>>1)<<16 ' pixel clock pulses
+long 1
 
 DAT ' Cog-resident code
               org
@@ -1662,8 +1695,8 @@ util_setactive_extra_special
 '              mov line_func,#line_soft2x
 '        _ret_ mov altline_func,#line_soft2x_alt
 
-init_ili9342 ' 6-bit digital LCD interface
-            '' TODO
+init_ili9342 ' 6-bit digital LCD interface  
+            
             ' load the overlay
             loc pa,#@lcd_overlay
             setq #495-video_ovl_area

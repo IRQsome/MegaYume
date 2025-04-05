@@ -13,7 +13,7 @@ CON ' Header
 ''
 VERSION_MAJOR = 1
 VERSION_MINOR = 4
-VERSION_RC    = 1
+VERSION_RC    = 2
 
 
 #include "config.spin2"
@@ -110,7 +110,7 @@ end
 ' setup video driver
 'video.start($F8,$70+4,long[$20],VIDEO_MODE,VGA_BASEPIN,VGA_VSYNC,VIDEO_SUBMODE) '
 tmp := (video.VIDEO_CLKFREQ/long[$F0])*6
-video.start(ANALOG_BASEPIN&63 + (DIGITAL_BASEPIN&63)<<8 + (DIGITAL_REVERSED?64<<8:0),VSYNC_PIN&63,VIDEO_MODE,VIDEO_SUBMODE,long[$20],0,2,$F8,$70+4,tmp)
+video.start(ANALOG_BASEPIN&63 + (DIGITAL_BASEPIN&63)<<8 + (DIGITAL_REVERSED?64<<8:0),VSYNC_PIN,VIDEO_MODE,VIDEO_SUBMODE,long[$20],0,2,$F8,$70+4,tmp)
 
 ' setup OPN2/PSG
 coginit(HUBEXEC_NEW,long[$30],0)
