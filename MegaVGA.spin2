@@ -1890,7 +1890,7 @@ init_lcd24    '' TODO merge stuff with LCD6/ILI code
               debug(uhex_long(hsync_breeze),udec(pb))
               wxpin hsync_breeze,pb
 
-              ' Setup video pins - Hsync+Vsync+6bit
+              ' Setup video pins
               getbyte temp2,vpins,#1
               and temp2,#63
               mov temp1,burst_color ' burst_color is Pin Mask
