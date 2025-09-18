@@ -6,7 +6,7 @@ CON
   SUBMODE_FORCE_REC601 = 1<<10 ' Force Rec601 color space for YPbPr
   SUBMODE_FORCE_REC709 = 1<<11 ' Force Rec709 color space for YPbPr
 
-  #0,MODE_RGBHV,MODE_RGBS,MODE_SoG,MODE_YPBPR,MODE_COMPOSITE,MODE_SVIDEO,MODE_SVID_AND_COMP,MODE_DVI,MODE_DVI_VGA,MODE_HDMI,MODE_HDMI_VGA,MODE_LCD6
+  #0,MODE_RGBHV,MODE_RGBS,MODE_SoG,MODE_YPBPR,MODE_COMPOSITE,MODE_SVIDEO,MODE_SVID_AND_COMP,MODE_DVI,MODE_DVI_VGA,MODE_HDMI,MODE_HDMI_VGA,MODE_LCD6,MODE_LCD24
 
   MODE_VGA = MODE_RGBHV
 
@@ -97,6 +97,10 @@ case mode
     cmode := @cmode_lcd6
     initf := @init_ili9342
     timing := @timing_lcd6_320x240
+  MODE_LCD24:
+    cmode := @cmode_lcd24_18bit
+    initf := @init_lcd24
+    timing := @timing_lcd24_640x480
   other:
     abort -1
 
@@ -216,6 +220,20 @@ long 0              ' CY
 long 0              ' CI
 long 0              ' CQ
 long 0              ' CQ XOR value (NTSC/PAL only)
+
+cmode_lcd24_18bit ' 18 bit LCD wired for LCD24 (FireAnt)
+long $00_00_00_00   ' DAC blanking value
+long $00_00_00_80   ' Blanking color
+long $00_00_00_C0   ' HSync color
+long $00_00_00_A0   ' VSync color
+long $00_00_00_E0   ' HSync+VSync color
+long $FC_FC_FC_E0   ' Port pin mask (in burst color register)
+long $00_00_00_E0   ' Port pin inversion (in burst freq register)
+long 0              ' CY
+long 0              ' CI
+long 0              ' CQ
+long 0              ' CQ XOR value (NTSC/PAL only)
+
 
 DAT ' Timings
 
@@ -358,6 +376,24 @@ long 0              ' Pixel NCO
 long 3              ' Alt-res NCO
 long 16 + (16>>1)<<16 ' pixel clock pulses
 long 1
+
+timing_lcd24_640x480
+long VIDEO_CLKFREQ  ' CLKFREQ
+long 2              ' active line multiplier
+long 10             ' V front porch
+long 32             ' V sync
+long 2              ' V back porch
+long 0              ' extra pillar
+long 640            ' blank line
+long 16             ' H front porch
+long 8              ' H sync
+long 20             ' H back porch
+long $0888888A      ' Sync NCO
+long $0888888A>>1   ' Pixel NCO
+long 0              ' Alt-res NCO
+long 15 + (15>>1)<<16 ' pixel clock pulses
+long 1
+
 
 DAT ' Cog-resident code
               org
@@ -1258,7 +1294,7 @@ scanfunc_lcd6_rgb24
               shr scantmp,#8
         _ret_ xcont pixel_multiplier,scantmp
 
-hsync_lcd6_vbi
+hsync_lcd_vbi
               ' just to refresh the clock pin
               getbyte pb,extravpins,#0
               wypin bit31,pb
@@ -1728,7 +1764,7 @@ init_ili9342 ' 6-bit digital LCD interface
             call #util_setactive_extra_special
 
             ' Setup methods
-            mov vbi_hsync_func,#hsync_lcd6_vbi
+            mov vbi_hsync_func,#hsync_lcd_vbi
             mov active_scanfunc,#scanfunc_lcd6_rgb24
 
             ' initialize LCD controller
@@ -1839,6 +1875,62 @@ ili_sendbyte_cmd
 .loop
             ret wcz
 
+' TODO: fix all this ^^ code being weirdly indented
+
+init_lcd24    '' TODO merge stuff with LCD6/ILI code
+              
+              ' load the overlay
+              loc pa,#@lcd_overlay
+              setq #495-video_ovl_area
+              rdlong video_ovl_area,pa
+
+              ' Pre-setup clock pin
+              getbyte pb,extravpins,#0
+              wrpin ##P_OE|P_PULSE|P_SYNC_IO,pb
+              debug(uhex_long(hsync_breeze),udec(pb))
+              wxpin hsync_breeze,pb
+
+              ' Setup video pins - Hsync+Vsync+6bit
+              getbyte temp2,vpins,#1
+              and temp2,#63
+              mov temp1,burst_color ' burst_color is Pin Mask
+              mov temp3,burst_freq  ' burst_freq is invert mask
+              and temp3,temp1
+              rep @.pinlp,#32
+              shr temp1,#1 wc
+        if_c  wrpin ##P_SYNC_IO,temp2
+        if_c  drvl temp2
+              shr temp3,#1 wc
+        if_c  wrpin ##P_SYNC_IO|P_INVERT_OUTPUT,temp2
+              alti temp2,##%000_000_100__000_000_011 ' increment S looped but without substitution
+.pinlp
+              
+
+              getbyte temp2,vpins,#1
+              and temp2,#%111000
+              shl temp2,#17
+              bith temp2,#encod X_PINS_ON
+
+              mov pa,##X_IMM_1X32_4DAC8
+              or pa,temp2
+              call #util_setsyncs
+              call #util_setactive_extra
+        
+              ' Setup methods
+              mov vbi_hsync_func,#hsync_lcd_vbi
+        
+              ' setup CLK pin (abuse breezeway entry)
+              debug(ubin_long(dira,dirb,outa,outb))
+              setcfrq nco_sync
+              getbyte pb,extravpins,#0
+              drvl pb
+              wypin bit31,pb
+              xinit ##$fffc,blank_color ' enter dummy command to ensure it stays in sync
+              waitx #511
+              
+              jmp #video_entry
+
+            
 CON
 
 ' clock source used below
