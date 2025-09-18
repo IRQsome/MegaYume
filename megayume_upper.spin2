@@ -26,7 +26,7 @@ DIRENT_MAX = 4000
 
 EXRAM_MAX = 8*1024*1024
 
-HEAPSIZE = 1024*8
+HEAPSIZE = 1024*8  ' Magic constant used by C runtime
 
 OBJ
 
