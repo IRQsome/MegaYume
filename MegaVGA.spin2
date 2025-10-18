@@ -288,7 +288,7 @@ long 234            ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
-long 0              ' Unused
+long 8              ' Preambles (HDMI only - subtracts from H.BP and H.Sync)
 long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
 timing_tmds_768x480
@@ -305,7 +305,7 @@ long 106            ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
-long 0              ' Unused
+long 8              ' Preambles (HDMI only - subtracts from H.BP and H.Sync)
 long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
 timing_tmds_800x480
@@ -322,7 +322,7 @@ long 74             ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
-long 0              ' Unused
+long 8              ' Preambles (HDMI only - subtracts from H.BP and H.Sync)
 long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
 timing_tmds_854x480
@@ -339,7 +339,7 @@ long 20             ' H back porch
 long $0CCCCCCD      ' Sync NCO
 long 0              ' Pixel NCO
 long 2              ' Alt-res NCO
-long 0              ' Unused
+long 8              ' Preambles (HDMI only - subtracts from H.BP and H.Sync)
 long 2              ' Guard Bands (HDMI only - subtracts from H.BP)
 
 timing_lcd6_320x240
@@ -519,6 +519,7 @@ nco_sync      res 1
 nco_main      res 1 ' only for analog modes!
 pixel_multiplier ' alias
 nco_alt       res 1 ' only for analog modes!
+hsync_preamble ' alias - HDMI only
 hsync_breeze  res 1 ' NTSC/PAL only - subtracts from bp
 hsync_guardband ' alias - HDMI only
 hsync_burst   res 1 ' NTSC/PAL only - subtracts from bp
@@ -838,18 +839,23 @@ island_tx
 .loop
         _ret_ xcont hsync_guardband,pa
 
+
+
 audio_island_tx_hv
               mov pa,##TMDS_GUARDDAT_HV
               mov temp1,hvsync_color
+              mov temp2,##TMDS_PREDAT_HV
               loc ptrb,#\packet_aclk_v
               jmp #audio_island_tx
 audio_island_tx_h
               mov pa,##TMDS_GUARDDAT_H
               mov temp1,hsync_color
+              mov temp2,##TMDS_PREDAT_H
               loc ptrb,#\packet_aclk
 audio_island_tx
               cmpsub hdmi_regen_counter,hdmi_regen_period wc
         if_nc xcont packetblank,temp1
+              xcont hsync_preamble,temp2
               loc ptra,#\packet_audio
               xcont hsync_guardband,pa
               rep @.loop,#32
@@ -867,7 +873,7 @@ audio_island_tx
 
 hsync_hdmi_vbi ' Hsync during V blanking
               call audio_poll_func
-              xzero hsync_tip,hsync_color ' this is the data preamble
+              xzero hsync_tip,hsync_color
               tjs vsync_pin,#.no_v
               drvh vsync_pin ' should only be 4 cycles late
 .no_v         
@@ -880,8 +886,9 @@ hsync_hdmi_previd ' Hsync during active video
               call audio_poll_func
               xzero hsync_tip,hsync_color
               call #audio_island_tx_h
-              xcont hsync_bpshort,##TMDS_PREVID
+              xcont hsync_bpshort,blank_color
               call audio_poll_func
+              xcont hsync_preamble,##TMDS_PREVID
               xcont hsync_guardband,##TMDS_GUARDVID ' take note that this is a mere 20 cycles
               jmp #vline_update
 
@@ -892,26 +899,25 @@ vsync_hdmi
               drvl vsync_pin ' should only be 4 cycles late
 .no_v         
               call #audio_island_tx_hv
-              cmp lines_left,sync_lines wz
-        if_nz jmp #.no_infopkt
-              ' send extra data on first line of Vsync (arbitrary convenient time)
-              xcont hsync_bp,##TMDS_PREDAT_V ' Preamble in backporch
-              call audio_poll_func
+              
+              xcont hsync_bp,vsync_color
               call #vline_update ' update client on time
+              call audio_poll_func
+              ' send extra data on first line of Vsync (arbitrary convenient time)
+              cmp lines_left,sync_lines wz
+      if_nz   xcont blankline,vsync_color
+      if_nz   jmp #.vsyn_task
+              xcont hsync_preamble,##TMDS_PREDAT_V
               mov pb,#INFO_PACKETS*32
               loc ptra,#\packet_aviinfo
               callpa ##TMDS_GUARDDAT_V,#island_tx
               xcont blankline_packets,vsync_color ' Shortened
+
 .vsyn_task    mov scanfunc,#dummy_func
               call scantask
               call audio_poll_func
               xcont hsync_fp,vsync_color
               jmp #audio_pollloop
-.no_infopkt
-              xcont hsync_bp,vsync_color
-              call #vline_update ' update client on time
-              xcont blankline,vsync_color
-              jmp #.vsyn_task
 
 '' Packet-related functions
 
@@ -1240,7 +1246,7 @@ packet_data1  res 2
 packet_data2  res 2
 packet_data3  res 2
 
-              fit 496
+              fit 502 ' don't use interrupts, so we can squeeze extra space
 
 DAT ' LCD overlay code
               org video_ovl_area
@@ -1400,7 +1406,7 @@ init_hdmi    ' HDMI (=DVI + audio)
 
             ' load the overlay
             loc pa,#@hdmi_overlay
-            setq #495-video_ovl_area
+            setq #501-video_ovl_area
             rdlong video_ovl_area,pa
 
             ' Set sync functions
@@ -1416,17 +1422,18 @@ init_hdmi    ' HDMI (=DVI + audio)
 
             ' Audio packets will be sent at the end of HSync
             ' and the remaining cycles will be the preamble
-            mov hsync_color,##TMDS_PREDAT_H ' Override the HSync color
-            mov hvsync_color,##TMDS_PREDAT_HV ' Override the HVSync color
-            sub hsync_tip,#64+4 ' 32 data, 2*2 guard
+            'mov hsync_color,##TMDS_PREDAT_H ' Override the HSync color
+            'mov hvsync_color,##TMDS_PREDAT_HV ' Override the HVSync color
+            sub hsync_tip,#64+4+8 ' 32*2 data, 2*2 guard, 8 preamble
 
-            ' Set bpshort to accomodate guard band
+            ' Set bpshort to accomodate guard band and video preamble
             mov hsync_bpshort,hsync_bp
             sub hsync_bpshort,hsync_guardband
-            debug(udec(hsync_bp,hsync_bpshort,hsync_guardband))
+            sub hsync_bpshort,hsync_preamble
+            debug(udec(hsync_bp,hsync_bpshort,hsync_guardband,hsync_preamble))
 
             mov blankline_packets,blankline
-            sub blankline_packets,#INFO_PACKETS*32+4 ' 32 per packet, 4 for the guard bands
+            sub blankline_packets,#INFO_PACKETS*32+4+8 ' 32 per packet, 4 for the guard bands, 8 for preamble
 
             ' Make sure all packets are consistently sloppy
             setq #9-1
@@ -1654,7 +1661,7 @@ util_sdtvcommon
               mov pa,##X_DACS_3_2_1_0|X_IMM_1X32_4DAC8
               ' fall through
 util_setsyncs
-              or hsync_breeze,pa
+              or hsync_breeze,pa ' is also hsync_preamble
               or hsync_burst,pa ' is also hsync_guardband
               or hsync_bpshort,pa
               or vsync_half,pa
