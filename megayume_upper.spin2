@@ -12,8 +12,8 @@ CON ' Header
 ''                    -= SEGA MEGA DRIVE EMULATOR =-
 ''
 VERSION_MAJOR = 1
-VERSION_MINOR = 4
-VERSION_RC    = 2
+VERSION_MINOR = 5
+VERSION_RC    = -1
 
 
 #include "config.spin2"
