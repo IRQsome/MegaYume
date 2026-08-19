@@ -27,7 +27,7 @@ Forum thread, chronicalling development and other interesting info: https://foru
 - Make you have flexspin 7.0.0 or newer installed
 
 - Configure memory type, pinouts and video mode in "config.spin2".
-  In particular, read RAMCONFIG.MD for more info on.. uh.. RAM config.
+  In particular, read RAMCONFIG.md for more info on.. uh.. RAM config.
   
 - Run "build.sh".
 
@@ -104,7 +104,8 @@ MegaYume uses a modified version of usbnew for usb input support, see [the usbne
 |||
 |-|-|
 |`config.spin2`|User config include file|
-|`RAMCONFIG.MD`|External memory configuration guide|
+|`RAMCONFIG.md`|External memory configuration guide|
+|`VIDEOCONFIG.md`|Video output configuration guide|
 |`build.sh`|Standard build script (USE THIS ONE)|
 |`build_gbrk.sh`|Build script for core debugging|
 |`build_comptest.sh`|Build script for compiler testing|
