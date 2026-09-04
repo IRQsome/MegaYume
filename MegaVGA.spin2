@@ -1,3 +1,7 @@
+OBJ {{
+  VNG (VideoNextGen) driver - "MEGA SEGA" flavoured
+  (C) 2024-2026 IRQsome Software
+}}
 CON
 
   SUBMODE_NTSC = 0
