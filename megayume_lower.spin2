@@ -925,6 +925,8 @@ mk_nco_slow   long $4000_0000
 mk_nco_slow   long $4000_0000
 #endif
 
+mk_psyncio    long P_SYNC_IO
+
 mk_cogvar_start
 
 mk_debug_tripwire long $00173E
@@ -1061,7 +1063,7 @@ mk_readrom
               ret wcz
 
 mk_psram_readburst
-              mov mk_memtmp0,#(8+PSRAM_WAIT)<<PSRAM_CYSHL
+              mov mk_memtmp0,#(8+PSRAM_WAIT-1)<<PSRAM_CYSHL
               shl mk_romio_length,#PSRAM_ASHIFT+1+PSRAM_CYSHL
               add mk_memtmp0,mk_romio_length
 #ifndef USE_PSRAM16
@@ -1075,6 +1077,8 @@ mk_psram_readburst
               mergeb  pa
 #ifdef USE_PSRAM_SLOW
               drvl  #PSRAM_CLK ' must be 2 ops before xinit
+#else
+              long $FC00_0000 | (PSRAM_SYNC_CLOCK ? mk_psyncio<<9 : 1<<19) | mk_psram_pinfield ' WRPIN
 #endif
               drvh  #PSRAM_SELECT
               drvl  mk_psram_pinfield
@@ -1088,6 +1092,9 @@ mk_psram_readburst
               setword mk_psram_read_cmd,mk_romio_length,#0
               waitxmt
               fltl mk_psram_pinfield
+#ifndef USE_PSRAM_SLOW
+              long $FC00_0000 | (PSRAM_SYNC_DATA ? mk_psyncio<<9 : 1<<19) | mk_psram_pinfield ' WRPIN
+#endif
               setq mk_nco_slow
               xcont mk_psram_read_cmd,#0
               waitxfi
@@ -1114,8 +1121,9 @@ mk_readrom
               shl mk_romio_tmp1,#9
               setbyte pa,#%101_00000,#3 ' read linear burst
               movbyts pa, #%%0123
-              drvh #HYPER_SELECT
               drvl #HYPER_BASE addpins 7
+              long $FC00_0000 | (HYPER_SYNC_CLOCK ? mk_psyncio<<9 : 1<<19) | (1<<18) | (HYPER_BASE addpins 7) ' WRPIN
+              drvh #HYPER_SELECT
               drvl #HYPER_CLK ' Init clock pin with correct (?) alignment
               xinit mk_hyper_addr_cmd1,pa
               wypin mk_memtmp0,#HYPER_CLK ' setup clock periods
@@ -1126,6 +1134,7 @@ mk_readrom
               setword mk_hyper_read_cmd,mk_romio_length,#0
               waitxmt
               fltl #HYPER_BASE addpins 7
+              long $FC00_0000 | (HYPER_SYNC_DATA ? mk_psyncio<<9 : 1<<19) | (1<<18) | (HYPER_BASE addpins 7) ' WRPIN
               setq mk_nco_slow
               xcont mk_hyper_read_cmd,#0
               waitxfi
@@ -5610,20 +5619,6 @@ zk_write8
               wrbyte zk_tmp8,pa
               ret wcz
 
-zk_portout
-              add zk_cycles,#4
-              'debug("PORT OUT ",uhex_byte(zk_ea,zk_tmp8)," : "{, zk_tmp8} )
-              'tjnz zk_ea,#.nope
-              'debug(`ZTerm `(zk_tmp8))
-.nope
-              ret
-
-zk_portin
-              mov zk_tmp8,#$FF
-              add zk_cycles,#4
-              debug("PORT IN ",uhex_byte(zk_ea,zk_tmp8))
-              ret wcz
-
 
 zk_read_rombyte
               add zk_cycles,#3
@@ -5663,15 +5658,20 @@ zk_read_rombyte
         if_nc jmp #$-1
 #ifdef USE_PSRAM_SLOW
               drvl  #PSRAM_CLK ' must be 2 ops before xinit
+#else
+              long $FC00_0000 | (PSRAM_SYNC_CLOCK ? zk_psyncio<<9 : 1<<19) | zk_psram_pinfield ' WRPIN
 #endif
               drvh  #PSRAM_SELECT
               drvl  zk_psram_pinfield
               xinit zk_psram_addr_cmd,pa
-              wypin #(8+PSRAM_WAIT+(2<<PSRAM_ASHIFT))<<PSRAM_CYSHL,#PSRAM_CLK
+              wypin #(8+PSRAM_WAIT-1+(2<<PSRAM_ASHIFT))<<PSRAM_CYSHL,#PSRAM_CLK
               setq zk_nco_fast
               xcont #PSRAM_WAIT*PSRAM_CLKDIV+PSRAM_DELAY,#0
               waitxmt
               fltl zk_psram_pinfield
+#ifndef USE_PSRAM_SLOW
+              long $FC00_0000 | (PSRAM_SYNC_DATA ? zk_psyncio<<9 : 1<<19) | zk_psram_pinfield ' WRPIN
+#endif
               setq zk_nco_slow
               xcont zk_psram_read_cmd,#0
               waitxfi
@@ -5691,8 +5691,9 @@ zk_read_rombyte
               movbyts pa, #%%0123
               locktry #ROM_LOCK wc
         if_nc jmp #$-1
-              drvh #HYPER_SELECT
               drvl #HYPER_BASE addpins 7
+              long $FC00_0000 | (HYPER_SYNC_CLOCK ? zk_psyncio<<9 : 1<<19) | (1<<18) | (HYPER_BASE addpins 7) ' WRPIN
+              drvh #HYPER_SELECT
               drvl #HYPER_CLK ' Init clock pin with correct (?) alignment
               xinit zk_hyper_addr_cmd1,pa
               wypin #(6+HYPER_WAIT+4),#HYPER_CLK ' setup clock periods
@@ -5701,6 +5702,7 @@ zk_read_rombyte
               xcont #HYPER_WAIT*2+HYPER_DELAY,#0
               waitxmt
               fltl #HYPER_BASE addpins 7
+              long $FC00_0000 | (HYPER_SYNC_DATA ? zk_psyncio<<9 : 1<<19) | (1<<18) | (HYPER_BASE addpins 7) ' WRPIN
               setq zk_nco_slow
               xcont zk_hyper_read_cmd,#0
               waitxfi
@@ -5759,6 +5761,8 @@ zk_nco_slow   long $4000_0000
 #else
 zk_nco_slow   long $4000_0000
 #endif
+
+zk_psyncio    long P_SYNC_IO
 
 zk_flags      long 0
 zk_accu       long 0
@@ -6064,6 +6068,19 @@ zk_lutbase
               long 0[16]
 #endif
 
+zk_portout
+              add zk_cycles,#4
+              'debug("PORT OUT ",uhex_byte(zk_ea,zk_tmp8)," : "{, zk_tmp8} )
+              'tjnz zk_ea,#.nope
+              'debug(`ZTerm `(zk_tmp8))
+.nope
+              ret
+
+zk_portin
+              mov zk_tmp8,#$FF
+              add zk_cycles,#4
+              debug("PORT IN ",uhex_byte(zk_ea,zk_tmp8))
+              ret wcz
 
 zk_rolla      mov zk_tmp8,zk_accu
 zk_shiftop
