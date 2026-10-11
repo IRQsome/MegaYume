@@ -539,7 +539,7 @@ PSRAM_TIMEOFFSET = 11 ' I guess???
 PSRAM_TIMEOFFSET = 8
 #endif
 
-PRI exmem_start() | tmp,cogs,banks
+PRI exmem_start() | tmp,cogs,banks,ctrlmb
 
 ifnot exmem_struct
   exmem_struct := c.malloc(8*4+8*4+32*4)
@@ -591,13 +591,28 @@ long[banks][0] := 128<<16 + (PSRAM_DELAY-PSRAM_TIMEOFFSET)<<13 + (PSRAM_SYNC_DAT
 long[banks][16] := PSRAM_SELECT + PSRAM_CLK<<8 + PSRAM_SELECT<<16
 #elseifdef USE_HYPER
 long[banks][0] := 128<<16 + (HYPER_DELAY-7)<<13 + (HYPER_SYNC_DATA?0:1)<<12 + 22
-long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + HYPER_LATENCY<<25 ' Latency????
+long[banks][16] := HYPER_SELECT + HYPER_CLK<<8 + HYPER_RWDS<<16 + HYPER_LATENCY<<25
 #endif
 
 exmem_mailbox[0] := -1
 cogs := exmem.getDriverAddr()
 exmem_cog := coginit(COGEXEC_NEW,cogs,tmp)+1
+ctrlmb := @exmem_mailbox+(exmem_cog-1)*12
 repeat while exmem_mailbox[0] ' wait for init so data structures can go dead
+
+#ifdef USE_HYPER
+pinh(HYPER_RESET) ' make sure we don't reset again
+' NEED to set latency register
+long[ctrlmb][2] := $01_00_00_00
+long[ctrlmb][1] := $6000 | ($8F0F<<16) | (((HYPER_LATENCY-5)&$f)<<20)
+long[ctrlmb][0] := exmem.R_SETREG '+ (i<<24) '+ cogid()
+repeat while long[ctrlmb][0]
+' possible 2nd die
+long[ctrlmb][2] := $01_00_00_00
+long[ctrlmb][1] := $6008 | ($8F0F<<16) | (((HYPER_LATENCY-5)&$f)<<20)
+long[ctrlmb][0] := exmem.R_SETREG '+ (i<<24) '+ cogid()
+repeat while long[ctrlmb][0]
+#endif
 
 PRI exmem_stop()
 if exmem_cog
