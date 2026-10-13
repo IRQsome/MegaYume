@@ -601,7 +601,8 @@ ctrlmb := @exmem_mailbox+(exmem_cog-1)*12
 repeat while exmem_mailbox[0] ' wait for init so data structures can go dead
 
 #ifdef USE_HYPER
-pinh(HYPER_RESET) ' make sure we don't reset again
+if HYPER_RESET >= 0
+  pinh(HYPER_RESET) ' make sure we don't reset again
 ' NEED to set latency register
 long[ctrlmb][2] := $01_00_00_00
 long[ctrlmb][1] := $6000 | ($8F0F<<16) | (((HYPER_LATENCY-5)&$f)<<20)
